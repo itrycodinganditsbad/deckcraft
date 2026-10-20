@@ -133,21 +133,45 @@ fn deck(view: &TreeView<'_>, pres: &mut Presentation, ids: &mut Ids, old: &LiveD
             obj.insert(k, v);
         }
         if let Some(s) = decode::<Presentation>(obj, ids, pres) {
-            pres.slide_size = s.slide_size;
-            pres.notes_size = s.notes_size;
-            pres.notes_master = s.notes_master;
-            pres.handout_master = s.handout_master;
-            pres.show = s.show;
-            pres.header_footer = s.header_footer;
-            pres.props = s.props;
-            pres.default_text_style = s.default_text_style;
-            pres.first_slide_number = s.first_slide_number;
-            pres.embedded_fonts = s.embedded_fonts;
-            pres.table_styles = s.table_styles;
-            pres.tags = s.tags;
-            pres.kept_parts = s.kept_parts;
-            pres.guides = s.guides;
-            pres.raw_ext = s.raw_ext;
+            // Every field named, so a new one doesn't compile until it's sorted (see `settings_differ`).
+            let Presentation {
+                slide_size,
+                notes_size,
+                slides: _,
+                masters: _,
+                notes_master,
+                handout_master,
+                sections: _,
+                custom_shows: _,
+                show,
+                header_footer,
+                props,
+                default_text_style,
+                media: _,
+                first_slide_number,
+                next_id: _,
+                embedded_fonts,
+                table_styles,
+                tags,
+                kept_parts,
+                guides,
+                raw_ext,
+            } = s;
+            pres.slide_size = slide_size;
+            pres.notes_size = notes_size;
+            pres.notes_master = notes_master;
+            pres.handout_master = handout_master;
+            pres.show = show;
+            pres.header_footer = header_footer;
+            pres.props = props;
+            pres.default_text_style = default_text_style;
+            pres.first_slide_number = first_slide_number;
+            pres.embedded_fonts = embedded_fonts;
+            pres.table_styles = table_styles;
+            pres.tags = tags;
+            pres.kept_parts = kept_parts;
+            pres.guides = guides;
+            pres.raw_ext = raw_ext;
         }
     }
     let before: HashMap<u32, &Arc<Master>> = old.pres.masters.iter().map(|m| (m.id.0, m)).collect();

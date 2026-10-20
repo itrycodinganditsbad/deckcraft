@@ -202,21 +202,46 @@ fn settings_differ(a: &Presentation, b: &Presentation) -> bool {
         (None, None) => true,
         _ => false,
     };
-    a.slide_size != b.slide_size
-        || a.notes_size != b.notes_size
-        || !ptr(&a.notes_master, &b.notes_master)
-        || !ptr(&a.handout_master, &b.handout_master)
-        || a.show != b.show
-        || a.header_footer != b.header_footer
-        || a.props != b.props
-        || a.default_text_style != b.default_text_style
-        || a.first_slide_number != b.first_slide_number
-        || a.embedded_fonts != b.embedded_fonts
-        || a.table_styles != b.table_styles
-        || a.tags != b.tags
-        || a.kept_parts != b.kept_parts
-        || a.guides != b.guides
-        || a.raw_ext != b.raw_ext
+    // Every field named, so a new one doesn't compile until it's sorted: a setting here (and in `read::deck`), or
+    // written elsewhere.
+    let Presentation {
+        slide_size,
+        notes_size,
+        slides: _,
+        masters: _,
+        notes_master,
+        handout_master,
+        sections: _,
+        custom_shows: _,
+        show,
+        header_footer,
+        props,
+        default_text_style,
+        media: _,
+        first_slide_number,
+        next_id: _,
+        embedded_fonts,
+        table_styles,
+        tags,
+        kept_parts,
+        guides,
+        raw_ext,
+    } = a;
+    *slide_size != b.slide_size
+        || *notes_size != b.notes_size
+        || !ptr(notes_master, &b.notes_master)
+        || !ptr(handout_master, &b.handout_master)
+        || *show != b.show
+        || *header_footer != b.header_footer
+        || *props != b.props
+        || *default_text_style != b.default_text_style
+        || *first_slide_number != b.first_slide_number
+        || *embedded_fonts != b.embedded_fonts
+        || *table_styles != b.table_styles
+        || *tags != b.tags
+        || *kept_parts != b.kept_parts
+        || *guides != b.guides
+        || *raw_ext != b.raw_ext
 }
 
 /// Rows and columns for the table shapes of `shapes`, kept from `old` (the same shapes before the change) by
