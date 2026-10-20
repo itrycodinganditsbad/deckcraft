@@ -12,6 +12,9 @@ use deckcraft_model::Presentation;
 
 use super::ids::Ids;
 
+/// A failed download is tried again after this long.
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -31,6 +34,10 @@ struct State {
     fetching: HashSet<[u8; 32]>,
     uploaded: Vec<(ElemId, ChunkRef)>,
     fetched: bool,
+    /// When a download last failed, by chunk hash (tried again after [`RETRY_AFTER`]).
+    failed: HashMap<[u8; 32], std::time::Instant>,
+    /// When an upload last failed, by media element.
+    put_failed: HashMap<ElemId, std::time::Instant>,
     /// The last failure (shown, and tried again).
     error: Option<String>,
 }
@@ -75,6 +82,7 @@ impl Shared {
                 Err(e) => {
                     let mut s = lock(state);
                     s.uploading.remove(&elem);
+                    s.put_failed.insert(elem, std::time::Instant::now());
                     s.error = Some(format!("a picture or media file couldn't be stored yet: {e}"));
                 }
             },
@@ -88,6 +96,7 @@ impl Shared {
                 Err(e) => {
                     let mut s = lock(state);
                     s.fetching.remove(&chunk.hash);
+                    s.failed.insert(chunk.hash, std::time::Instant::now());
                     s.error = Some(format!("a picture or media file couldn't be fetched yet: {e}"));
                 }
             },
@@ -130,8 +139,11 @@ impl Shared {
 
     /// Stores a media item's bytes, unless that is under way.
     pub fn upload(&self, elem: ElemId, data: Arc<Vec<u8>>) {
-        if !lock(&self.state).uploading.insert(elem) {
-            return;
+        {
+            let mut s = lock(&self.state);
+            if s.put_failed.get(&elem).is_some_and(|t| t.elapsed() < RETRY_AFTER) || !s.uploading.insert(elem) {
+                return;
+            }
         }
         self.submit(Job::Put(elem, data));
     }
@@ -140,7 +152,12 @@ impl Shared {
     pub fn fetch(&self, chunk: ChunkRef) {
         {
             let mut s = lock(&self.state);
-            if s.cache.contains_key(&chunk.hash) || !s.fetching.insert(chunk.hash) {
+            if s.cache.contains_key(&chunk.hash) {
+                // Here already: the next pull puts it into the model.
+                s.fetched = true;
+                return;
+            }
+            if s.failed.get(&chunk.hash).is_some_and(|t| t.elapsed() < RETRY_AFTER) || !s.fetching.insert(chunk.hash) {
                 return;
             }
         }

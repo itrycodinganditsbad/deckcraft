@@ -17,10 +17,10 @@ use crate::tools::{Mods, PointerEvent, PointerKind};
 use crate::{Session, cmd};
 
 /// A folder of its own for one machine's files.
-struct Folder(PathBuf);
+pub(crate) struct Folder(pub(crate) PathBuf);
 
 impl Folder {
-    fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("deckcraft-live-{}-{name}-{n}", std::process::id()));
@@ -37,12 +37,12 @@ impl Drop for Folder {
 
 /// Opens `rel` in a new engine session on `f`'s machine, live (the file in `dir` is written from `pres` first, as
 /// the file sync would have brought it).
-fn engine_open(f: &Fake, dir: &Folder, rel: &str, pres: &Presentation, machine: &str) -> Session {
+pub(crate) fn engine_open(f: &Fake, dir: &Folder, rel: &str, pres: &Presentation, machine: &str) -> Session {
     engine_join(f, dir, rel, &deckcraft_format::save(pres).unwrap(), machine)
 }
 
 /// Opens `rel` live, its file in `dir` being `bytes` (another machine's save, as the file sync brought it).
-fn engine_join(f: &Fake, dir: &Folder, rel: &str, bytes: &[u8], machine: &str) -> Session {
+pub(crate) fn engine_join(f: &Fake, dir: &Folder, rel: &str, bytes: &[u8], machine: &str) -> Session {
     let abs = dir.0.join(rel);
     std::fs::write(&abs, bytes).unwrap();
     let mut s = Session::new();

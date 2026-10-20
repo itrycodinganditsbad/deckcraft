@@ -34,6 +34,14 @@ pub fn push_media(s: &Kit<Deck>) {
             d.shared.upload(e, m.data.clone());
         }
     }
+    // Bytes that didn't come down yet (a failed download is tried again, after a pause).
+    for m in &d.pres.media {
+        if m.data.is_empty()
+            && let Some(c) = d.ids.elem(m.id.0).and_then(|e| d.chunks.get(&e))
+        {
+            d.shared.fetch(*c);
+        }
+    }
 }
 
 /// Takes what the media worker finished: chunk references of uploads (written to the live document as a background
