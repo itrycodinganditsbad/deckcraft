@@ -111,8 +111,10 @@ pub fn banner(app: &mut SlideApp, ui: &mut Ui) {
                         app.set_status(e);
                     }
                 }
-                if ui.button("Keep the live document").clicked() {
-                    app.session.live_keep();
+                if ui.button("Keep the live document").clicked()
+                    && let Err(e) = app.run("file.liveKeep", serde_json::json!({}))
+                {
+                    app.set_status(e);
                 }
             }
             Banner::ReadOnly(text) => {

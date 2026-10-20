@@ -619,6 +619,48 @@ fn bringing_the_file_in_and_revert_are_one_undoable_change() {
     assert_ne!(deck(&b).props.title, "Edited outside");
 }
 
+/// "Keep the live document" is the command `file.liveKeep`: enabled only while the banner is up; it takes the banner
+/// down, and the next autosave writes the live content over the outside edit.
+#[test]
+fn keeping_the_live_document_is_a_command() {
+    let hub = Hub::new();
+    let (pc, laptop) = (hub.machine("pc").unwrap(), hub.machine("laptop").unwrap());
+    let (da, db) = (Folder::new("pc"), Folder::new("laptop"));
+    let mut a = engine_open(&pc, &da, "keep.deckcraft", &corpus(), "pc");
+    assert!(a.execute("file.liveKeep", &json!({})).is_err(), "disabled without the banner");
+    // The pc's media uploads finish before it closes.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while a.live_kit().unwrap().model().chunks.len() < corpus().media.len() {
+        a.poll_live();
+        assert!(Instant::now() < deadline, "the uploads never finished");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(a);
+    let mut edited = corpus();
+    edited.props.title = "Edited outside".into();
+    let mut b = engine_open(&laptop, &db, "keep.deckcraft", &edited, "laptop");
+    assert_eq!(b.live_banner(), Some(Banner::ChangedOutside));
+    b.execute("file.liveKeep", &json!({})).unwrap();
+    assert_eq!(b.live_banner(), None);
+    assert!(b.journal.iter().any(|(id, _)| id == "file.liveKeep"), "journaled like any command");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        b.poll_live();
+        let on_disk = deckcraft_format::load(&std::fs::read(db.0.join("keep.deckcraft")).unwrap()).unwrap();
+        if on_disk.props.title != "Edited outside" {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the live content was never written: {:?}; empty media {}; dirty {}",
+            b.live_status(),
+            deck(&b).media.iter().filter(|m| m.data.is_empty()).count(),
+            b.active().unwrap().is_dirty()
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// A document a newer DeckCraft made opens read-only: the banner says to update, and an edit is taken back.
 #[test]
 fn a_newer_documents_opens_read_only() {

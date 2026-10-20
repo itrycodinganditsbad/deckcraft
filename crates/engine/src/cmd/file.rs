@@ -68,6 +68,15 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(noundo "file.recovery.open", "Open Recovered Presentations", [], None, "{} → {opened: [document index]}", always, recovery_open),
         cmd!(noundo "file.recovery.discard", "Discard Recovered Presentations", [], None, "{uid?: one entry (else all)}", always, recovery_discard),
         cmd!(noundo "file.revert", "Revert", [], None, "{}", has_doc, revert),
+        cmd!(
+            noundo "file.liveKeep",
+            "Keep the Live Document",
+            [],
+            None,
+            "{} — a live presentation whose file was changed outside Craft: keep the live content (the next save writes it over the file)",
+            changed_outside_banner,
+            live_keep
+        ),
         cmd!(noundo "window.next", "Next Window", ["Window"], Some("Cmd+`"), "{index?}", has_doc, next_window),
     ]
 }
@@ -657,6 +666,23 @@ fn properties(s: &mut Session, p: &Value) -> Result<Value> {
         })?;
     }
     Ok(serde_json::to_value(&s.doc()?.doc.props).unwrap_or_default())
+}
+
+/// Enabled while a live presentation shows "changed outside Craft".
+fn changed_outside_banner(s: &Session) -> std::result::Result<(), String> {
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if s.live_banner() == Some(crate::live::session::Banner::ChangedOutside) {
+        return Ok(());
+    }
+    let _ = s;
+    Err("the file wasn't changed outside Craft".into())
+}
+
+fn live_keep(s: &mut Session, _p: &Value) -> Result<Value> {
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    s.live_keep();
+    let _ = s;
+    ok()
 }
 
 fn revert(s: &mut Session, _p: &Value) -> Result<Value> {
