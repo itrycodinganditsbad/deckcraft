@@ -21,6 +21,8 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 enum Job {
     Put(ElemId, Arc<Vec<u8>>),
+    /// Bytes known here (the file's own media): stored, and kept for any item that names them.
+    Seed(Arc<Vec<u8>>),
     Get(ChunkRef),
 }
 
@@ -86,6 +88,14 @@ impl Shared {
                     s.error = Some(format!("a picture or media file couldn't be stored yet: {e}"));
                 }
             },
+            Job::Seed(data) => {
+                if let Ok(chunk) = store.put(&data) {
+                    let mut s = lock(state);
+                    s.cache.insert(chunk.hash, data.clone());
+                    s.put_of.insert(Arc::as_ptr(&data) as usize, chunk);
+                    s.fetched = true;
+                }
+            }
             Job::Get(chunk) => match store.get(&chunk) {
                 Ok(bytes) => {
                     let mut s = lock(state);
@@ -146,6 +156,11 @@ impl Shared {
             }
         }
         self.submit(Job::Put(elem, data));
+    }
+
+    /// Keeps bytes this machine has (the file's media) for the live document's references to them.
+    pub fn seed(&self, data: Arc<Vec<u8>>) {
+        self.submit(Job::Seed(data));
     }
 
     /// Fetches the bytes of `chunk`, unless they are here or on their way.

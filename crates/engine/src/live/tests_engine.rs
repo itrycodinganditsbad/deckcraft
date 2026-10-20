@@ -432,6 +432,46 @@ fn both_autosave_and_the_files_catch_up() {
     assert_eq!(std::fs::metadata(db.0.join("save.deckcraft")).unwrap().modified().unwrap(), saved, "no save loop");
 }
 
+/// Media over Craft Cloud's 64 MB: a presentation holding some opens as a plain file (saying why), and adding some to
+/// a live one is taken back (saying why), so no machine is left unable to save. A machine reopening while its agent is
+/// offline has its pictures from its own file, and can save.
+#[test]
+fn media_over_the_limit_never_goes_live_and_reopening_offline_keeps_pictures() {
+    let hub = Hub::new();
+    let pc = hub.machine("pc").unwrap();
+    let mut big = corpus();
+    big.add_media("huge.mp4", "video/mp4", vec![1u8; super::session::MAX_MEDIA_BYTES + 1]);
+    let bytes = deckcraft_format::save(&big).unwrap();
+    let opened = open_at(&agent(&pc), "huge.deckcraft", &big, &bytes, "pc".into());
+    assert!(matches!(&opened, Some(Err(why)) if why.contains("huge.mp4")), "not live, and why");
+    // Added to a live one: taken back.
+    let (mut a, mut b, _da, db, _pc, laptop) = pair(&hub, "limit.deckcraft");
+    let before = deck(&a);
+    a.edit(|doc, _| {
+        doc.add_media("huge.mp4", "video/mp4", vec![1u8; super::session::MAX_MEDIA_BYTES + 1]);
+        Ok(())
+    })
+    .unwrap();
+    a.poll_live();
+    assert!(Arc::ptr_eq(&deck(&a), &before), "the change was taken back");
+    assert!(a.ui_requests.iter().any(|r| matches!(r, crate::UiRequest::Message { text } if text.contains("64 MB"))));
+    // The laptop reopens with its agent offline: its pictures come from its own file.
+    a.execute("file.save", &json!({})).unwrap();
+    converge(&mut a, &mut b, "in step");
+    let saved = std::fs::read(db.0.join("limit.deckcraft")).unwrap_or_default();
+    drop(b);
+    laptop.set_online(false);
+    let file = if saved.is_empty() { deckcraft_format::save(&deck(&a)).unwrap() } else { saved };
+    let mut again = engine_join(&laptop, &db, "limit.deckcraft", &file, "laptop");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while deck(&again).media.iter().any(|m| m.data.is_empty()) {
+        again.poll_live();
+        assert!(Instant::now() < deadline, "the pictures never came from the file");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    again.execute("file.save", &json!({})).unwrap();
+}
+
 /// Revert on a live document brings back the file as it is on disk now (its last save), not the content from when the
 /// window was opened.
 #[test]

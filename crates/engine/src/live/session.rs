@@ -130,8 +130,18 @@ pub fn try_open(agent: &Agent, path: &str, pres: &Presentation, bytes: &[u8]) ->
 
 /// Opens the file the agent knows as `rel` live (read as `pres` from `bytes`), as `machine`. `None`: not live now.
 pub fn open_at(agent: &Agent, rel: &str, pres: &Presentation, bytes: &[u8], machine: String) -> Option<std::result::Result<LiveOpen, String>> {
+    if let Some(why) = too_big_for_live(pres) {
+        return Some(Err(why));
+    }
     let client = agent.client().ok()?;
     let shared = Arc::new(Shared::new(Arc::new(AgentBlobs(client.blobs()))));
+    // The file's own media bytes are known here: the live document's chunk references find them without a download
+    // (a machine reopening offline has its pictures).
+    for m in &pres.media {
+        if !m.data.is_empty() {
+            shared.seed(m.data.clone());
+        }
+    }
     let model = Arc::new(LiveDeck::new(Arc::new(pres.clone()), shared));
     match Kit::<Deck>::open(agent, rel, model, Some(bytes)) {
         Ok(Open::Live(kit)) => Some(Ok(LiveOpen { kit: *kit, machine })),
@@ -140,25 +150,34 @@ pub fn open_at(agent: &Agent, rel: &str, pres: &Presentation, bytes: &[u8], mach
     }
 }
 
-/// Reads `path` as `file.open` does, and opens it live too when it can be (see [`try_open`]); a live open that fails
-/// is logged and the file opens as a plain one. Blocking: call it where files are read (off the UI thread there).
-pub fn read_with_live(path: &str, agent: &Agent) -> Result<(crate::cmd::file::LoadedFile, Option<LiveOpen>)> {
+/// What a live open came to: the presentation opened live, or why it opens as a plain file (to tell the user).
+pub type LiveTry = Option<std::result::Result<LiveOpen, String>>;
+
+/// Reads `path` as `file.open` does, and opens it live too when it can be (see [`try_open`]). A live open that fails
+/// says why; the file then opens as a plain one. Blocking: call it where files are read (off the UI thread there).
+pub fn read_with_live(path: &str, agent: &Agent) -> Result<(crate::cmd::file::LoadedFile, LiveTry)> {
     let bytes = crate::io::read_file(path).map_err(EngineError::Other)?;
     let (doc, damaged) = crate::cmd::file::open_checked(path, &bytes)?;
     let native = deckcraft_format::sniff(&bytes) || deckcraft_pptx::sniff(&bytes);
-    let live = if damaged.is_empty() {
-        match try_open(agent, path, &doc, &bytes) {
-            Some(Ok(open)) => Some(open),
-            Some(Err(e)) => {
-                log::warn!("opening live failed, opening as a plain file: {e}");
-                None
-            }
-            None => None,
-        }
-    } else {
-        None
-    };
+    let live = if damaged.is_empty() { try_open(agent, path, &doc, &bytes) } else { None };
+    if let Some(Err(e)) = &live {
+        log::warn!("opening live failed, opening as a plain file: {e}");
+    }
     Ok((crate::cmd::file::LoadedFile { path: path.to_owned(), doc, native, damaged }, live))
+}
+
+/// The largest media item a live presentation can hold (Craft Cloud's blob limit).
+pub const MAX_MEDIA_BYTES: usize = 64 * 1024 * 1024;
+
+/// Why `p` can't be live, if it can't: a media item over [`MAX_MEDIA_BYTES`].
+pub fn too_big_for_live(p: &Presentation) -> Option<String> {
+    let m = p.media.iter().find(|m| m.data.len() > MAX_MEDIA_BYTES)?;
+    Some(format!(
+        "{} is {} MB; Craft Cloud carries media of up to {} MB, so this presentation opens as a plain file here (edits don't go to your other computers)",
+        m.name,
+        m.data.len() / (1024 * 1024),
+        MAX_MEDIA_BYTES / (1024 * 1024)
+    ))
 }
 
 /// What the window shows over a live document.
@@ -227,6 +246,16 @@ impl Session {
         self.live.staged.push((path.to_owned(), open, file));
         if self.live.staged.len() > 4 {
             self.live.staged.remove(0);
+        }
+    }
+
+    /// What a live open came to: staged for `file.adopt` of `path`, or, when it failed, why it opens as a plain file
+    /// (said to the user).
+    pub fn stage_live_try(&mut self, path: &str, live: LiveTry, file: &Presentation) {
+        match live {
+            Some(Ok(open)) => self.stage_live(path, open, Some(file.clone())),
+            Some(Err(why)) => self.ui_requests.push(crate::UiRequest::Message { text: format!("Opened as a plain file, not live: {why}") }),
+            None => {}
         }
     }
 
@@ -349,6 +378,19 @@ impl Session {
             let Some(st) = self.docs.iter_mut().find(|d| d.uid == uid) else { continue };
             let Some(l) = self.live.docs.get_mut(&uid) else { continue };
             if Arc::ptr_eq(&st.doc, &l.base) || st.interaction.is_some() || st.composition.is_some() {
+                continue;
+            }
+            // Media over Craft Cloud's limit can't go live: the change is taken back, with why.
+            if too_big_for_live(&st.doc).is_some() && too_big_for_live(&l.base).is_none() {
+                st.doc = l.base.clone();
+                st.revision += 1;
+                crate::clamp_selection(st);
+                self.ui_requests.push(crate::UiRequest::Message {
+                    text: format!(
+                        "That media file is over {} MB, the most Craft Cloud carries, so it wasn't added to this live presentation. Use a smaller file, or save a copy outside the Craft Cloud folder.",
+                        MAX_MEDIA_BYTES / (1024 * 1024)
+                    ),
+                });
                 continue;
             }
             let old = l.kit.model().clone();

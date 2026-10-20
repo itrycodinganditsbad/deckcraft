@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 
 /// What a background open brings besides the file: the presentation opened live, when it is one.
 #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
-type Extra = Option<deckcraft_engine::live::session::LiveOpen>;
+type Extra = deckcraft_engine::live::session::LiveTry;
 #[cfg(not(all(feature = "live", not(target_arch = "wasm32"))))]
 type Extra = ();
 
@@ -88,9 +88,7 @@ impl SlideApp {
         match r {
             Ok((f, extra)) => {
                 #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
-                if let Some(open) = extra {
-                    self.session.stage_live(&o.path, open, Some(f.doc.clone()));
-                }
+                self.session.stage_live_try(&o.path, extra, &f.doc);
                 #[cfg(not(all(feature = "live", not(target_arch = "wasm32"))))]
                 let () = extra;
                 // Into the session through the command path, like file.open: journaled and guarded.

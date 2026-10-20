@@ -232,9 +232,7 @@ fn open(s: &mut Session, p: &Value) -> Result<Value> {
     #[cfg(feature = "live")]
     if let Some(agent) = s.live_agent() {
         let (f, live) = crate::live::session::read_with_live(path, &agent)?;
-        if let Some(open) = live {
-            s.stage_live(path, open, Some(f.doc.clone()));
-        }
+        s.stage_live_try(path, live, &f.doc);
         return adopt_loaded(s, f);
     }
     adopt_loaded(s, read_presentation_file(path)?)
