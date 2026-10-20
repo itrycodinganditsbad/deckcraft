@@ -1,7 +1,10 @@
 //! The live simulation: two DeckCraft sessions on the kit's fake agent, each running random commands from
 //! DeckCraft's own command list (with plausible and hostile parameters, as the editor soak makes them), with undo
-//! and redo, saves, dropped connections and time offline. Healed, both presentations are the same, and they are
-//! presentations DeckCraft's validator accepts, with nothing pointing at what a merge deleted.
+//! and redo, saves, dropped connections and time offline, and now and then a paste of tens of KB into a new text box
+//! (in fragments: the simulation's frames are 16 KiB), with fragments on their way to the windows dropped or held back
+//! and an agent sometimes stopping part of the way through taking one. No window ever holds part of a paste. Healed,
+//! both presentations are the same, and they are presentations DeckCraft's validator accepts, with nothing pointing
+//! at what a merge deleted.
 //!
 //! `LIVE_SIM_SEEDS=1000 LIVE_SIM_FIRST=0 cargo test --release -p deckcraft-engine --features live live_sim` runs
 //! seeds 0 to 999; `LIVE_SIM_SEED=17` runs one. A seed's history is random but not replayed exactly: the fake agent's
@@ -11,7 +14,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use craft_cloud_kit::testing::Hub;
+use craft_cloud_kit::testing::{FragmentFaults, Hub};
 use serde_json::{Value, json};
 
 use super::tests::{canon, corpus, diff, valid};
@@ -65,9 +68,39 @@ fn params(r: &mut Rng, s: &Session) -> Value {
     }
 }
 
+/// A paste of 30 to 100 KB, its text made of the seed's own characters (so its start and end are found nowhere
+/// else): with frames of 16 KiB here it goes in fragments, as a paste of megabytes does for real.
+fn paste_text(r: &mut Rng) -> String {
+    let len = 30_000 + r.below(70_000);
+    (0..len).map(|_| char::from(b'a' + u8::try_from(r.below(26)).unwrap_or(0))).collect()
+}
+
+/// The texts of every shape in the deck.
+fn texts(s: &Session) -> Vec<String> {
+    let mut out = Vec::new();
+    for sl in &s.active().unwrap().doc.slides {
+        deckcraft_model::walk(&sl.shapes, &mut |sh, _| {
+            if let Some(t) = &sh.text {
+                out.push(t.text());
+            }
+        });
+    }
+    out
+}
+
 fn run_seed(seed: u64, steps: usize) {
+    // A set of fragments that stopped coming is dropped soon (the session catches up by opening the document again);
+    // frames of 16 KiB, so pastes of tens of KB go in fragments.
+    craft_cloud_app::live::set_fragment_patience_for_tests(Duration::from_millis(300));
+    craft_cloud_app::live::set_frame_limit_for_tests(16 * 1024);
     let hub = Hub::new();
     let (pc, laptop) = (hub.machine("pc").unwrap(), hub.machine("laptop").unwrap());
+    // Fragments on their way to the windows: some dropped, some held back a few steps (out of order).
+    for (i, f) in [&pc, &laptop].into_iter().enumerate() {
+        f.set_fragment_faults(Some(FragmentFaults { seed: seed.wrapping_mul(5).wrapping_add(i as u64), drop: 150, delay: 300, max_delay: 4 }));
+    }
+    // The pastes made: their first 64 characters and their length. A text that holds a paste's start holds it whole.
+    let mut pastes: Vec<(String, usize)> = Vec::new();
     let (da, db) = (Folder::new("pc"), Folder::new("laptop"));
     let rel = format!("sim-{seed}.deckcraft");
     let mut a = engine_open(&pc, &da, &rel, &corpus(), "pc");
@@ -112,6 +145,24 @@ fn run_seed(seed: u64, steps: usize) {
                 log.push_back(format!("{who}: connections dropped"));
                 fakes[who].drop_connections();
             }
+            // A big paste into a new text box (sometimes with the agent stopping part of the way through taking it).
+            _ if r.below(3) == 0 => {
+                if r.below(4) == 0 {
+                    fakes[who].drop_connections_after(r.below(3));
+                }
+                let n = s.active().unwrap().doc.slides.len();
+                let _ = s.execute("slide.go", &json!({"index": r.below(n)}));
+                if let Ok(v) = s.execute("shape.insert", &json!({"preset": "rect", "rect": [20, 20, 300, 200]}))
+                    && let Some(id) = v["id"].as_u64()
+                {
+                    let text = paste_text(&mut r);
+                    log.push_back(format!("{who}: paste of {} bytes into {id}", text.len()));
+                    let _ = s.execute("text.edit", &json!({"id": id, "at": [0, 0]}));
+                    if s.execute("text.insert", &json!({"text": text})).is_ok() {
+                        pastes.push((text[..64].to_owned(), text.len()));
+                    }
+                }
+            }
             _ => {}
         }
         if log.len() > 30 && std::env::var_os("LIVE_SIM_SEED").is_none() {
@@ -128,10 +179,27 @@ fn run_seed(seed: u64, steps: usize) {
         for (n, s) in [("pc", &a), ("laptop", &b)] {
             let problems = s.active().unwrap().doc.validate();
             assert!(problems.is_empty(), "seed {seed} step {step}: the {n}'s deck: {problems:?}; {log:?}");
+            // No paste is ever seen in part (a change comes whole or not at all).
+            // (A part of one would lack whole slices or fragments, thousands of characters; the commands only ever take
+            // a few characters from a text, or all of it.)
+            for t in texts(s) {
+                for (start, len) in &pastes {
+                    assert!(
+                        !t.contains(start.as_str()) || t.len() + 4096 >= *len,
+                        "seed {seed} step {step}: the {n} holds part of a paste (a text of {} bytes, the paste {len}); {log:?}",
+                        t.len()
+                    );
+                }
+            }
         }
+        hub.tick();
     }
     for f in fakes {
+        f.set_fragment_faults(None);
         f.set_online(true);
+    }
+    for _ in 0..8 {
+        hub.tick();
     }
     // Healed: both the same, both valid.
     let deadline = Instant::now() + Duration::from_secs(60);
