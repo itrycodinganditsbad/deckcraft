@@ -284,6 +284,9 @@ fn with_table(s: &mut Session, p: &Value, cmd: &str, f: impl Fn(&mut Table) -> R
 
 fn rows_cols(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
     let (r, c) = at(s, p);
+    // What the command does, for a live presentation's row and column identities (rows have none in the model).
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    s.note_table_edit(op, r, c);
     let op = op.to_string();
     with_table(s, p, "table", move |t| {
         match op.as_str() {

@@ -472,6 +472,42 @@ fn media_over_the_limit_never_goes_live_and_reopening_offline_keeps_pictures() {
     again.execute("file.save", &json!({})).unwrap();
 }
 
+/// A fresh table's rows are all alike: a row inserted above row 1 on the pc while the laptop types in row 1 keeps
+/// the laptop's text in that row (now row 2) on both machines, not in the new one. And a row deleted on one machine
+/// while the other types in another row keeps the typing where it was.
+#[test]
+fn rows_inserted_in_a_table_of_equal_rows_keep_their_identity() {
+    let hub = Hub::new();
+    let (mut a, mut b, _da, _db, _pc, _l) = pair(&hub, "rows.deckcraft");
+    a.execute("slide.go", &json!({"index": 0})).unwrap();
+    let v = a.execute("insert.table", &json!({"rows": 3, "cols": 2})).unwrap();
+    let ta = ShapeId(u32::try_from(v["id"].as_u64().unwrap()).unwrap());
+    a.execute("shape.rename", &json!({"id": ta.0, "name": "Grid"})).unwrap();
+    converge(&mut a, &mut b, "the table");
+    let tb = named(&b, "Grid").unwrap();
+    b.execute("slide.go", &json!({"index": 0})).unwrap();
+    b.execute("text.edit", &json!({"id": tb.0, "cell": [1, 0], "at": [0, 0]})).unwrap();
+    b.execute("text.insert", &json!({"text": "B"})).unwrap();
+    a.execute("table.insertRowAbove", &json!({"id": ta.0, "row": 1})).unwrap();
+    converge(&mut a, &mut b, "a row and typing at once");
+    let cells = |s: &Session, id: ShapeId| -> Vec<String> {
+        let sh = s.active().unwrap().shape(id).cloned().unwrap();
+        let deckcraft_model::ShapeKind::Table(t) = sh.kind else { panic!("a table") };
+        t.rows.iter().map(|r| r.cells[0].text.text()).collect()
+    };
+    for (s, id) in [(&a, ta), (&b, tb)] {
+        assert_eq!(cells(s, id), vec!["", "", "B", ""], "the typing stays in its row");
+    }
+    // A row deleted while the other types in a later one.
+    b.execute("text.edit", &json!({"id": tb.0, "cell": [3, 0], "at": [0, 0]})).unwrap();
+    b.execute("text.insert", &json!({"text": "Z"})).unwrap();
+    a.execute("table.deleteRow", &json!({"id": ta.0, "row": 0})).unwrap();
+    converge(&mut a, &mut b, "a deleted row and typing at once");
+    for (s, id) in [(&a, ta), (&b, tb)] {
+        assert_eq!(cells(s, id), vec!["", "B", "Z"]);
+    }
+}
+
 /// Revert on a live document brings back the file as it is on disk now (its last save), not the content from when the
 /// window was opened.
 #[test]

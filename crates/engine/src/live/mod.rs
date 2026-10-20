@@ -93,7 +93,7 @@ impl LiveDeck {
         for s in &pres.slides {
             let Some(se) = ids.elem(s.id.0) else { continue };
             ids.comments.insert(se, s.comments.iter().map(|_| ElemId::new()).collect());
-            cover_tables(&mut ids, &s.shapes, None);
+            cover_tables(&mut ids, &s.shapes, None, None);
         }
         ids.sections = pres.sections.iter().map(|_| ElemId::new()).collect();
         ids.shows = pres.custom_shows.iter().map(|_| ElemId::new()).collect();
@@ -108,6 +108,12 @@ impl LiveDeck {
     /// The model after a local change made `pres` from this one's: elements the change added get ids, rows,
     /// columns, comments, sections and custom shows keep theirs by position, and the parts that changed get new keys.
     pub fn wrap(&self, pres: Arc<Presentation>) -> Self {
+        self.wrap_with(pres, None)
+    }
+
+    /// [`LiveDeck::wrap`], told what a table command did (`edit`), so a table's rows and columns keep their elements
+    /// exactly where the content alone can't tell (equal rows).
+    pub fn wrap_with(&self, pres: Arc<Presentation>, edit: Option<ids::TableEdit>) -> Self {
         let old = &self.pres;
         let mut ids = (*self.ids).clone();
         let mut keys = self.keys;
@@ -127,7 +133,7 @@ impl LiveDeck {
             let old_ids = ids.comments.get(&se).cloned().unwrap_or_default();
             let new_ids = ids::align(old_list, &old_ids, &s.comments);
             ids.comments.insert(se, new_ids);
-            cover_tables(&mut ids, &s.shapes, before.map(|b| b.shapes.as_slice()));
+            cover_tables(&mut ids, &s.shapes, before.map(|b| b.shapes.as_slice()), edit);
         }
         if old.slides.iter().map(|s| s.id).ne(pres.slides.iter().map(|s| s.id)) {
             keys.order = fresh_key();
@@ -215,7 +221,7 @@ fn settings_differ(a: &Presentation, b: &Presentation) -> bool {
 
 /// Rows and columns for the table shapes of `shapes`, kept from `old` (the same shapes before the change) by
 /// position where they were there.
-fn cover_tables(ids: &mut Ids, shapes: &[deckcraft_model::Shape], old: Option<&[deckcraft_model::Shape]>) {
+fn cover_tables(ids: &mut Ids, shapes: &[deckcraft_model::Shape], old: Option<&[deckcraft_model::Shape]>, edit: Option<ids::TableEdit>) {
     let mut found = Vec::new();
     deckcraft_model::walk(shapes, &mut |s, _| {
         if let ShapeKind::Table(t) = &s.kind {
@@ -228,6 +234,8 @@ fn cover_tables(ids: &mut Ids, shapes: &[deckcraft_model::Shape], old: Option<&[
         let (old_rows, old_cols) = (ids.rows.get(&e).cloned().unwrap_or_default(), ids.cols.get(&e).cloned().unwrap_or_default());
         let (rows, cols) = match before {
             Some(b) if b == t && old_rows.len() == t.rows.len() && old_cols.len() == ids::columns(t).len() => continue,
+            // The command said what it did (a row inserted or deleted at an index): taken as it is.
+            Some(_) if let Some(done) = edit.and_then(|e| e.apply(&old_rows, &old_cols, t.rows.len(), ids::columns(t).len())) => done,
             Some(b) => (ids::align(&b.rows, &old_rows, &t.rows), ids::align(&ids::columns(b), &old_cols, &ids::columns(t))),
             None if old_rows.len() == t.rows.len() && old_cols.len() == ids::columns(t).len() => (old_rows, old_cols),
             None => (t.rows.iter().map(|_| ElemId::new()).collect(), ids::columns(t).iter().map(|_| ElemId::new()).collect()),

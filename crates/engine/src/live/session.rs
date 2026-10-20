@@ -226,6 +226,8 @@ pub(crate) struct Lives {
     staged: Vec<(String, LiveOpen, Option<Presentation>)>,
     pub(crate) agent: Option<Agent>,
     wake: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// What the last table command did (taken by the next sync).
+    table_edit: Option<super::ids::TableEdit>,
 }
 
 impl Session {
@@ -247,6 +249,21 @@ impl Session {
         if self.live.staged.len() > 4 {
             self.live.staged.remove(0);
         }
+    }
+
+    /// A table command's edit (`rowAbove`, `rowBelow`, `colLeft`, `colRight`, `delRow`, `delColumn` at row `r`,
+    /// column `c`), for the next sync to keep row and column identities exact.
+    pub(crate) fn note_table_edit(&mut self, op: &str, r: usize, c: usize) {
+        use super::ids::TableEdit;
+        self.live.table_edit = match op {
+            "rowAbove" => Some(TableEdit::InsertRow(r)),
+            "rowBelow" => Some(TableEdit::InsertRow(r.saturating_add(1))),
+            "colLeft" => Some(TableEdit::InsertCol(c)),
+            "colRight" => Some(TableEdit::InsertCol(c.saturating_add(1))),
+            "delRow" => Some(TableEdit::DeleteRow(r)),
+            "delColumn" | "delCol" => Some(TableEdit::DeleteCol(c)),
+            _ => None,
+        };
     }
 
     /// What a live open came to: staged for `file.adopt` of `path`, or, when it failed, why it opens as a plain file
@@ -373,6 +390,7 @@ impl Session {
     /// The hook: every live presentation whose document isn't what the kit has (and that no gesture or composition
     /// holds) sends the change, as one undo step. A change the kit refuses for good (read-only) is taken back.
     pub(crate) fn sync_live(&mut self) {
+        let table_edit = self.live.table_edit.take();
         let uids: Vec<u64> = self.live.docs.keys().copied().collect();
         for uid in uids {
             let Some(st) = self.docs.iter_mut().find(|d| d.uid == uid) else { continue };
@@ -397,7 +415,7 @@ impl Session {
             if !Arc::ptr_eq(&old.pres, &l.base) {
                 l.base = old.pres.clone();
             }
-            let new = Arc::new(old.wrap(st.doc.clone()));
+            let new = Arc::new(old.wrap_with(st.doc.clone(), table_edit));
             match l.kit.local_change(&old, &new) {
                 Ok(()) => {
                     l.base = st.doc.clone();

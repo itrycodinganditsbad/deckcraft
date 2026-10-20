@@ -170,6 +170,35 @@ pub(crate) fn align<T: PartialEq>(old: &[T], old_ids: &[ElemId], new: &[T]) -> V
     out.into_iter().map(|e| e.unwrap_or_else(ElemId::new)).collect()
 }
 
+/// What a table command did, as the command says it (rows and columns have no identity in the model): used before
+/// guessing by content, which can't tell equal rows apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableEdit {
+    InsertRow(usize),
+    DeleteRow(usize),
+    InsertCol(usize),
+    DeleteCol(usize),
+}
+
+impl TableEdit {
+    /// The rows' and columns' elements after the edit, from those before, when the table's size matches the edit.
+    pub(crate) fn apply(self, rows: &[ElemId], cols: &[ElemId], n_rows: usize, n_cols: usize) -> Option<(Vec<ElemId>, Vec<ElemId>)> {
+        let (mut r, mut c) = (rows.to_vec(), cols.to_vec());
+        match self {
+            TableEdit::InsertRow(i) if n_rows == r.len() + 1 && n_cols == c.len() && i <= r.len() => r.insert(i, ElemId::new()),
+            TableEdit::DeleteRow(i) if n_rows + 1 == r.len() && n_cols == c.len() && i < r.len() => {
+                r.remove(i);
+            }
+            TableEdit::InsertCol(i) if n_cols == c.len() + 1 && n_rows == r.len() && i <= c.len() => c.insert(i, ElemId::new()),
+            TableEdit::DeleteCol(i) if n_cols + 1 == c.len() && n_rows == r.len() && i < c.len() => {
+                c.remove(i);
+            }
+            _ => return None,
+        }
+        Some((r, c))
+    }
+}
+
 /// A column of a table, for aligning columns: its width and its cells.
 #[derive(PartialEq)]
 pub(crate) struct Column<'a> {
