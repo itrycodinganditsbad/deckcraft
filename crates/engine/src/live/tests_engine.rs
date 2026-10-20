@@ -253,6 +253,48 @@ fn a_remote_change_mid_gesture_waits_for_its_end() {
     assert!(!tb_text.contains("ni"), "the preedit never went out: {tb_text:?}");
 }
 
+/// Review focus 3, a dialog: the pc opens Size and Position on a shape, the laptop fills that shape meanwhile, then the
+/// pc presses OK with the values the dialog showed and a new width. The dialog writes only the box: both the width and
+/// the laptop's fill survive, on both machines.
+#[test]
+fn a_remote_fill_survives_an_open_size_and_position_dialog() {
+    let hub = Hub::new();
+    let (mut a, mut b, _da, _db, _pc, _l) = pair(&hub, "dialog.deckcraft");
+    let id = insert(&mut a, 100.0);
+    converge(&mut a, &mut b, "the shape");
+    a.execute("edit.select", &json!({"ids": [id.0]})).unwrap();
+    a.execute("shape.sizePosition", &json!({})).unwrap();
+    let shown = match a.ui_requests.last() {
+        Some(crate::UiRequest::Dialog { id, params }) if id == "sizePosition" => params.clone(),
+        other => panic!("the dialog didn't open: {other:?}"),
+    };
+    // Meanwhile the laptop fills the shape.
+    let on_b = deck(&b).slides[1]
+        .shapes
+        .iter()
+        .find(|sh| sh.xfrm.is_some_and(|x| (x.x - 100.0).abs() < 0.01 && (x.y - 300.0).abs() < 0.01))
+        .map(|sh| sh.id)
+        .unwrap();
+    b.execute("slide.go", &json!({"index": 1})).unwrap();
+    b.execute("shape.fill", &json!({"ids": [on_b.0], "color": "#00ff00"})).unwrap();
+    let filled = b.active().unwrap().shape(on_b).and_then(|sh| sh.fill.clone());
+    assert!(filled.is_some());
+    converge(&mut a, &mut b, "the laptop's fill");
+    assert_eq!(a.active().unwrap().shape(id).and_then(|sh| sh.fill.clone()), filled, "the fill arrived with the dialog open");
+    // OK: what the dialog sends, every field, the width changed.
+    let mut ok = shown.clone();
+    ok["w"] = json!(200.0);
+    ok.as_object_mut().unwrap().retain(|k, _| ["x", "y", "w", "h", "rot", "lockAspect"].contains(&k.as_str()));
+    a.execute("shape.sizePosition", &ok).unwrap();
+    converge(&mut a, &mut b, "the dialog's OK");
+    for (s, sid) in [(&a, id), (&b, on_b)] {
+        let sh = s.active().unwrap().shape(sid).cloned().unwrap();
+        assert!((sh.xfrm.unwrap().w - 200.0).abs() < 0.01, "the new width");
+        assert!((sh.xfrm.unwrap().x - 100.0).abs() < 0.01, "the box otherwise as shown");
+        assert_eq!(sh.fill, filled, "the laptop's fill survived");
+    }
+}
+
 /// Review focus 4: a slide deleted on one machine while the other types in a shape on it: gone on both, the typist's
 /// selection let go of it, nothing dangles.
 #[test]
