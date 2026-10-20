@@ -167,4 +167,20 @@ fn live_speed_through_the_engine() {
     eprintln!("live speed through the engine: keystroke text.insert median {lm:?} (worst {lw:?}); remote poll_live median {rm:?} (worst {rw:?})");
     assert!(lm < Duration::from_millis(10), "local keystroke median {lm:?}");
     assert!(rm < Duration::from_millis(10), "remote keystroke median {rm:?}");
+    // A 2 MB paste (a bundle of slices, in fragments): on the other machine whole, in well under a second (one Loro
+    // update with that much text took seconds to import).
+    let paste = "p".repeat(2 * 1024 * 1024);
+    let t = Instant::now();
+    a.execute("text.insert", &serde_json::json!({"text": paste})).unwrap();
+    let sent = t.elapsed();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !typed(&b).contains(&paste) {
+        a.poll_live();
+        b.poll_live();
+        assert!(Instant::now() < deadline, "the paste never came");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let there = t.elapsed();
+    eprintln!("live speed: a 2 MB paste: text.insert {sent:?}, on the other machine after {there:?}");
+    assert!(there < Duration::from_secs(3), "the paste took {there:?}");
 }
