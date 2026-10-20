@@ -197,7 +197,7 @@ pub(crate) fn same_file(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
-    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+    if let (Some(x), Some(y)) = (crate::io::canonical(std::path::Path::new(a)), crate::io::canonical(std::path::Path::new(b))) {
         return x == y;
     }
     let plain = |p: &str| {
