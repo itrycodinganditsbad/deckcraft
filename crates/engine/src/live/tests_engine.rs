@@ -607,8 +607,18 @@ fn unsent_edits_are_never_thrown_away() {
     assert!(a.execute("edit.undo", &json!({})).is_err(), "Undo waits");
     assert!(deck(&a).slides[0].shapes.iter().any(|s| s.name == "twice"), "the edit is still on screen");
     a.execute("file.save", &json!({})).unwrap();
-    let saved = deckcraft_format::load(&std::fs::read(da.0.join("unsent.deckcraft")).unwrap()).unwrap();
+    let file = da.0.join("unsent.deckcraft");
+    let saved = deckcraft_format::load(&std::fs::read(&file).unwrap()).unwrap();
     assert!(saved.slides[0].shapes.iter().any(|s| s.name == "twice"), "the save has the edit");
+    // Saved: the edits stay unsent, but the same bytes aren't written again every AUTOSAVE_AFTER (each write is an
+    // edit outside Craft to the agent).
+    let written = std::fs::metadata(&file).unwrap().modified().unwrap();
+    let until = Instant::now() + AUTOSAVE_AFTER + Duration::from_secs(2);
+    while Instant::now() < until {
+        a.poll_live();
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(std::fs::metadata(&file).unwrap().modified().unwrap(), written, "not written again");
 }
 
 /// Revert on a live document brings back the file as it is on disk now (its last save), not the content from when the

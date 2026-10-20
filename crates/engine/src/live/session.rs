@@ -549,7 +549,9 @@ impl Session {
         // Autosave, as docs/kit.md says: a while after a change made here, or when the file is behind the live document
         // (the kit allows that at most once per CATCH_UP_EVERY), and nothing is in the way. A change that came from
         // elsewhere is never a reason by itself: the machine that made it saves it.
-        let local_due = l.changed_at.is_some_and(|t| t.elapsed() >= AUTOSAVE_AFTER);
+        // (Edits the kit refused stay a change made here, but once saved as they are they aren't written again until
+        // something changes: each write is an edit outside Craft to the agent.)
+        let local_due = l.changed_at.is_some_and(|t| t.elapsed() >= AUTOSAVE_AFTER) && (!unsent || st.is_dirty());
         // A newer DeckCraft's document is never written by this one (it would drop what this one doesn't know).
         let read_only = l.kit.status().read_only.is_some() || matches!(l.banner, Some(Banner::ReadOnly(_)));
         // Unsent edits don't hold it back: they are saved as they are, with no record (see `live_write`).
