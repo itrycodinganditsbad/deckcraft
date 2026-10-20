@@ -24,7 +24,9 @@ every edit on the others as it is made. Anything else opens as before. `DECKCRAF
   that comes only part of the way (a computer slept or lost its connection meanwhile) waits in Craft Cloud on that
   computer until the rest comes, and shows then. A change is at most 8 MB. Every computer needs a Craft Cloud that
   knows such changes: the badge names another computer on an older one ("<computer> runs an older Craft Cloud;
-  update it"), and with an older one on this computer the presentation opens as a plain file, saying to update it.
+  update it"; best effort: it shows only while that computer still sends its selection), and with an older one on
+  this computer the presentation opens as a plain file, saying to update it. Update Craft Cloud's server first,
+  then every computer's Craft Cloud and DeckCraft together.
 - **Not live:** a presentation with a picture or video over 64 MB opens as a plain file, with a message; so does one
   on a computer whose Craft Cloud is too old.
 - **Known gaps:**
