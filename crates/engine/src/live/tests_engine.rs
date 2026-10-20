@@ -443,13 +443,15 @@ fn only_the_typing_machine_saves() {
     }
     assert_eq!(laptop.saves().len(), before, "the laptop never saved");
     assert!(!b.active().unwrap().is_dirty(), "another machine's typing isn't unsaved here");
-    // Without the pc's saves: the laptop's file falls behind; it catches up at most once per CATCH_UP_EVERY.
+    // Without the pc's saves, for 12 s of steady typing (a keystroke every 100 ms, so over two CATCH_UP_EVERY
+    // windows): the laptop's file falls behind, and it catches up at most once per window; the typing machine never
+    // saves while it types (it waits for 5 s of quiet), and once it stops, it saves.
     let start = Instant::now();
     let before = laptop.saves().len();
     let typist = pc.saves().len();
-    for _ in 0..20 {
+    while start.elapsed() < Duration::from_secs(12) {
         a.execute("text.insert", &json!({"text": "m"})).unwrap();
-        for _ in 0..5 {
+        for _ in 0..10 {
             a.poll_live();
             b.poll_live();
             std::thread::sleep(Duration::from_millis(10));
@@ -457,10 +459,17 @@ fn only_the_typing_machine_saves() {
     }
     let windows = start.elapsed().as_secs() / craft_cloud_kit::CATCH_UP_EVERY.as_secs() + 1;
     let saves = (laptop.saves().len() - before) as u64;
-    assert!(saves <= windows, "the laptop saved {saves} times in {:?}", start.elapsed());
-    if start.elapsed() < AUTOSAVE_AFTER {
-        assert_eq!(pc.saves().len(), typist, "the typing machine waits for 5 s of quiet");
+    assert!(start.elapsed() > 2 * craft_cloud_kit::CATCH_UP_EVERY, "the check ran over more than one window");
+    assert!((1..=windows).contains(&saves), "the laptop saved {saves} times in {:?} ({windows} windows)", start.elapsed());
+    assert_eq!(pc.saves().len(), typist, "the typing machine waits for 5 s of quiet");
+    let quiet = Instant::now();
+    while pc.saves().len() == typist {
+        a.poll_live();
+        b.poll_live();
+        assert!(quiet.elapsed() < AUTOSAVE_AFTER + Duration::from_secs(5), "the typing machine never saved after it stopped");
+        std::thread::sleep(Duration::from_millis(20));
     }
+    assert!(quiet.elapsed() >= AUTOSAVE_AFTER - Duration::from_millis(500), "it saved only after its quiet");
 }
 
 /// Both machines edit and autosave: no conflict copy is ever made (the hub's saves carry records), each file ends
