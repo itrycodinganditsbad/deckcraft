@@ -494,6 +494,8 @@ pub struct SlideApp {
     /// Closing waits for media not sent to Craft Cloud yet: since when (egui time), and whether to close now anyway.
     #[cfg(feature = "live")]
     pub(crate) closing: Option<(f64, bool)>,
+    /// Files from the system waiting for the background open (one opens at a time).
+    pub(crate) open_queue: std::collections::VecDeque<String>,
     pub(crate) notes_buf: (u64, usize, notes::Draft),
     /// Faces borrowed from the font database for text the interface fonts can't draw (#101).
     pub ui_fonts: uifonts::UiFonts,
@@ -580,6 +582,7 @@ impl SlideApp {
             quit_confirmed: false,
             #[cfg(feature = "live")]
             closing: None,
+            open_queue: std::collections::VecDeque::new(),
             notes_buf: (0, usize::MAX, notes::Draft::default()),
             ui_fonts: uifonts::UiFonts::default(),
             thumb_drag: None,
@@ -1210,9 +1213,14 @@ impl SlideApp {
         let mut last = None;
         for p in paths {
             // A live open can wait up to 30 s for Craft Cloud: off the UI thread, so the window shows at once.
+            // (Several such files open one after the other, each on the background thread.)
             #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
-            if self.session.live_agent().is_some() && p.to_ascii_lowercase().ends_with(".deckcraft") && self.opening.is_none() {
-                self.open_path_in_background(p);
+            if self.session.live_agent().is_some() && p.to_ascii_lowercase().ends_with(".deckcraft") {
+                if self.opening.is_none() {
+                    self.open_path_in_background(p);
+                } else {
+                    self.open_queue.push_back(p.clone());
+                }
                 last = Some(p);
                 continue;
             }

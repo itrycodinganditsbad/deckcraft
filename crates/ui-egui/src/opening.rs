@@ -74,6 +74,16 @@ impl SlideApp {
         if let Some(o) = self.opening.take() {
             self.set_status(format!("Stopped opening {}", o.name()));
         }
+        self.open_next();
+    }
+
+    /// The next file from the system waiting for the background open, if one is.
+    fn open_next(&mut self) {
+        if self.opening.is_none()
+            && let Some(next) = self.open_queue.pop_front()
+        {
+            self.open_path_in_background(&next);
+        }
     }
 
     /// Take the background read's result when it has arrived.
@@ -101,6 +111,7 @@ impl SlideApp {
             // Over the start screen too, like a failed file.open (#346).
             Err(e) => self.notify(e),
         }
+        self.open_next();
     }
 
     /// The progress window over everything while a file opens.

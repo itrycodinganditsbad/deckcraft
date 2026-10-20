@@ -223,14 +223,18 @@ fn files_from_the_system_open_in_the_background() {
     let hub = Hub::new();
     let pc = hub.machine("pc").unwrap();
     let dir = Folder::new("pc");
-    let path = dir.0.join("system.deckcraft");
-    std::fs::write(&path, deckcraft_engine::cmd::file::save_bytes(&deck(), "deckcraft").unwrap()).unwrap();
+    let bytes = deckcraft_engine::cmd::file::save_bytes(&deck(), "deckcraft").unwrap();
+    let (one, two) = (dir.0.join("system.deckcraft"), dir.0.join("second.deckcraft"));
+    std::fs::write(&one, &bytes).unwrap();
+    std::fs::write(&two, &bytes).unwrap();
     let mut session = Session::new();
     session.enable_live(agent(&pc), None);
     let mut app = SlideApp::new(session, Services::default());
-    let failed = app.open_from_system(&[path.to_string_lossy().into_owned()]);
+    let failed = app.open_from_system(&[one.to_string_lossy().into_owned(), two.to_string_lossy().into_owned()]);
     assert!(failed.is_empty());
     assert!(app.opening.is_some(), "opening on its thread");
+    assert_eq!(app.open_queue.len(), 1, "the second waits for the first, never opened on the UI thread");
+    assert!(app.session.documents().is_empty());
     let mut h = harness(app);
-    until(&mut h, None, "the presentation", |h| h.state().session.active().is_some());
+    until(&mut h, None, "both presentations", |h| h.state().session.documents().len() == 2);
 }
