@@ -38,6 +38,12 @@ pub fn status_bar(app: &mut SlideApp, ui: &mut Ui) {
                 .layout(egui::Layout::right_to_left(egui::Align::Center)),
         );
         right.spacing_mut().item_spacing.x = 4.0;
+        // A live presentation's state: Live, Waiting, Offline, Read-only…
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        {
+            crate::live::badge(app, &mut right);
+            right.add_space(8.0);
+        }
         if small_icon(&mut right, Icon::FitSmall, "Fit slide to current window", false).clicked() {
             app.ui.zoom = None;
         }

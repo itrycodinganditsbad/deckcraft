@@ -23,11 +23,23 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 
+[features]
+# Live documents through Craft Cloud: the badge, the account line and shared recents, the banners, other machines'
+# selections. Off by default; the desktop app turns it on (never the web build).
+live = ["deckcraft-engine/live", "dep:craft-cloud-egui"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-cloud-egui = { workspace = true, optional = true }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# The fake agent, for the live window's tests.
+craft-cloud-kit = { workspace = true, features = ["fake"] }
 
 [build-dependencies]
 serde_json = { workspace = true }

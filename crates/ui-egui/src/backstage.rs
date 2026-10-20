@@ -736,6 +736,8 @@ fn home(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage, out: &mut Outcome) 
             }
         });
     }
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    crate::live::backstage(app, ui);
     ui.add_space(30.0);
     ui.hyperlink_to("Join the ArtCraft community on Discord", deckcraft_engine::links::DISCORD);
 }
@@ -799,6 +801,8 @@ fn open_page(app: &mut SlideApp, ui: &mut Ui, bs: &mut Backstage) {
             heading(ui, "Presentations");
             let q = bs.query.clone();
             recent_list(app, ui, &q, usize::MAX);
+            #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+            crate::live::backstage(app, ui);
         });
     });
 }

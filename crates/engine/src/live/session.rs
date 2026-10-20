@@ -222,6 +222,11 @@ impl Session {
         }
     }
 
+    /// Whether any presentation is live (its autosave and presence run on time).
+    pub fn has_live(&self) -> bool {
+        !self.live.docs.is_empty()
+    }
+
     /// Whether the active presentation is live.
     pub fn is_live(&self) -> bool {
         self.active().is_some_and(|d| self.live.docs.contains_key(&d.uid))

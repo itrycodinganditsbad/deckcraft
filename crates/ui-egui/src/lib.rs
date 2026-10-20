@@ -16,6 +16,8 @@ pub mod doc_window;
 pub mod eyedropper;
 pub mod fillui;
 pub mod icons;
+#[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+pub mod live;
 pub mod media;
 pub mod menus;
 pub mod notes;
@@ -515,6 +517,9 @@ pub struct SlideApp {
     next_file_id: u64,
     /// Picks and drops whose bytes have not arrived yet.
     pending_files: Vec<PendingFile>,
+    /// Craft Cloud's piece of the window, once the app turned live documents on.
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    pub(crate) cloud: Option<live::Cloud>,
 }
 
 fn grid_options_touched(p: &Value) -> bool {
@@ -583,6 +588,8 @@ impl SlideApp {
             twisting: false,
             next_file_id: 1,
             pending_files: Vec::new(),
+            #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+            cloud: None,
         }
     }
 
@@ -1216,6 +1223,9 @@ impl SlideApp {
         self.ui.recent.insert(0, path.to_string());
         self.ui.recent.truncate(RECENT_MAX);
         self.ui.view = ViewMode::Normal;
+        // On every computer too, when the file is in the Craft Cloud folder.
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        self.note_live_recent(path, false);
     }
 
     /// Transitions › Sound › Other Sound…: pick an audio file for the selected slides.
@@ -1561,6 +1571,8 @@ impl SlideApp {
         self.last_time = now;
         self.drain_control(ctx);
         self.poll_opening();
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        self.poll_live(ctx);
         if self.fonts_ready {
             self.drain_inbox();
         }
@@ -1847,6 +1859,8 @@ impl SlideApp {
                         thumbs::show(self, ui);
                     }
                     egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
+                        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+                        live::banner(self, ui);
                         if self.ui.notes {
                             status::notes_pane(self, ui);
                         }
@@ -2070,6 +2084,9 @@ mod datetime_tests;
 
 #[cfg(test)]
 mod inbox_tests;
+
+#[cfg(all(test, feature = "live", not(target_arch = "wasm32")))]
+mod live_tests;
 
 #[cfg(test)]
 mod tests {

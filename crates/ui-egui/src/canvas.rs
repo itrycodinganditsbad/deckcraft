@@ -261,6 +261,9 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
     pointer(app, ui, &resp, xf);
     if !app.anim_preview_active() {
         overlays(app, ui, &painter, xf, &t);
+        // The other machines' selections on a live presentation.
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        crate::live::presence(app, &painter, xf);
         ime_output(app, ui, xf);
         media_bar(app, ui, xf);
         gif_buttons(app, ui, xf, &gifs);

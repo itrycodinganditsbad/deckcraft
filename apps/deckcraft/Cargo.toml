@@ -10,6 +10,11 @@ default-run = "deckcraft"
 [lints]
 workspace = true
 
+[features]
+default = ["live"]
+# Live documents through Craft Cloud (`.deckcraft` files in its folder edited on several computers at once).
+live = ["deckcraft-engine/live", "deckcraft-ui-egui/live"]
+
 [dependencies]
 deckcraft-engine = { workspace = true }
 deckcraft-ui-egui = { workspace = true }

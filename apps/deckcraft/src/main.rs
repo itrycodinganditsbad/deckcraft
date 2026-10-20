@@ -250,6 +250,11 @@ fn main() -> eframe::Result {
                 }
             }
             app.integrated_titlebar = cfg!(target_os = "macos");
+            // Live documents through Craft Cloud: `.deckcraft` files in its folder open live (DECKCRAFT_NO_LIVE: never).
+            #[cfg(feature = "live")]
+            if std::env::var_os("DECKCRAFT_NO_LIVE").is_none() {
+                app.enable_live(&cc.egui_ctx);
+            }
             if let Some(port) = control_port {
                 let rx = control_server::start(port, cc.egui_ctx.clone());
                 app = app.with_control(rx);

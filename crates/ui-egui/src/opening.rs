@@ -6,11 +6,17 @@ use crate::SlideApp;
 use deckcraft_engine::cmd::file::LoadedFile;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
+/// What a background open brings besides the file: the presentation opened live, when it is one.
+#[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+type Extra = Option<deckcraft_engine::live::session::LiveOpen>;
+#[cfg(not(all(feature = "live", not(target_arch = "wasm32"))))]
+type Extra = ();
+
 /// A presentation being read on a background thread.
 pub struct Opening {
     pub path: String,
     pub started_ms: f64,
-    rx: Receiver<Result<LoadedFile, String>>,
+    rx: Receiver<Result<(LoadedFile, Extra), String>>,
 }
 
 impl Opening {
@@ -39,9 +45,18 @@ impl SlideApp {
         {
             let (tx, rx) = std::sync::mpsc::channel();
             let p = path.to_string();
+            #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+            let agent = self.session.live_agent();
             let spawned = std::thread::Builder::new().name("deckcraft-open".into()).spawn(move || {
-                let r = deckcraft_engine::cmd::file::read_presentation_file(&p).map_err(|e| e.to_string());
-                let _ = tx.send(r);
+                // A `.deckcraft` file in the Craft Cloud folder opens live (waiting for the agent here, off the UI).
+                #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+                let r = match agent {
+                    Some(agent) => deckcraft_engine::live::session::read_with_live(&p, &agent),
+                    None => deckcraft_engine::cmd::file::read_presentation_file(&p).map(|f| (f, None)),
+                };
+                #[cfg(not(all(feature = "live", not(target_arch = "wasm32"))))]
+                let r = deckcraft_engine::cmd::file::read_presentation_file(&p).map(|f| (f, ()));
+                let _ = tx.send(r.map_err(|e| e.to_string()));
             });
             match spawned {
                 Ok(_) => self.opening = Some(Opening { path: path.to_string(), started_ms: crate::now_ms(), rx }),
@@ -71,7 +86,13 @@ impl SlideApp {
         };
         let Some(o) = self.opening.take() else { return };
         match r {
-            Ok(f) => {
+            Ok((f, extra)) => {
+                #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+                if let Some(open) = extra {
+                    self.session.stage_live(&o.path, open, Some(f.doc.clone()));
+                }
+                #[cfg(not(all(feature = "live", not(target_arch = "wasm32"))))]
+                let () = extra;
                 // Into the session through the command path, like file.open: journaled and guarded.
                 let token = self.session.stage_loaded(f);
                 match self.session.execute("file.adopt", &serde_json::json!({"path": o.path, "token": token})) {
