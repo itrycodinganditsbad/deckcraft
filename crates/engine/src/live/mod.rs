@@ -269,3 +269,5 @@ impl LiveDocument for Deck {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_engine;

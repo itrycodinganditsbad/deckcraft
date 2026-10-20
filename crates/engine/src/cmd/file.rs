@@ -216,6 +216,8 @@ fn adopt_loaded(s: &mut Session, f: LoadedFile) -> Result<Value> {
     let LoadedFile { path, doc, native, damaged } = f;
     let keep_path = native && damaged.is_empty();
     let i = add_opened(s, &path, keep_path.then(|| path.clone()), doc);
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    s.adopt_live(&path, keep_path);
     report_damage(s, &damaged)?;
     let st = s.doc()?;
     Ok(json!({
@@ -227,6 +229,14 @@ fn adopt_loaded(s: &mut Session, f: LoadedFile) -> Result<Value> {
 #[cfg(not(target_arch = "wasm32"))]
 fn open(s: &mut Session, p: &Value) -> Result<Value> {
     let path = str_param(p, "path").ok_or_else(|| bad("file.open", "missing `path`"))?;
+    #[cfg(feature = "live")]
+    if let Some(agent) = s.live_agent() {
+        let (f, live) = crate::live::session::read_with_live(path, &agent)?;
+        if let Some(open) = live {
+            s.stage_live(path, open, Some(f.doc.clone()));
+        }
+        return adopt_loaded(s, f);
+    }
     adopt_loaded(s, read_presentation_file(path)?)
 }
 
@@ -431,6 +441,11 @@ fn save(s: &mut Session, p: &Value) -> Result<Value> {
         return Ok(json!({"needsPath": true}));
     };
     let format = str_param(p, "format").unwrap_or(format_for_path(&path));
+    // A live presentation saved to its own file: in Craft Cloud's order (the record before the write).
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if let Some(r) = s.live_save(&path, format) {
+        return r;
+    }
     let bytes = save_bytes(&s.doc()?.doc, format)?;
     write_file(&path, &bytes)?;
     mark_saved(s, Some(path.clone()))?;
@@ -644,6 +659,11 @@ fn properties(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn revert(s: &mut Session, _p: &Value) -> Result<Value> {
+    // A live presentation: the file's content replaces the live content, one change for everyone (undoable).
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if let Some(r) = s.live_revert() {
+        return r;
+    }
     let st = s.doc_mut()?;
     st.doc = st.saved_doc.clone();
     st.history = crate::History { limit: st.history.limit, ..Default::default() };

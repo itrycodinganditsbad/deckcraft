@@ -480,6 +480,9 @@ pub struct Session {
     /// Presentations a host read off the UI thread, waiting for `file.adopt` (by token).
     loaded: Vec<(u64, cmd::file::LoadedFile)>,
     next_loaded: u64,
+    /// Presentations open live through Craft Cloud.
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    pub(crate) live: live::session::Lives,
 }
 
 impl Default for Session {
@@ -511,6 +514,8 @@ impl Session {
             panics_caught: 0,
             loaded: vec![],
             next_loaded: 0,
+            #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+            live: Default::default(),
         }
     }
     /// Hand over a presentation read on another thread ([`cmd::file::read_presentation_file`]);
@@ -567,6 +572,8 @@ impl Session {
     pub fn close_document(&mut self, i: usize) {
         if i < self.docs.len() {
             let d = self.docs.remove(i);
+            #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+            self.drop_live(d.uid);
             if let Some(dir) = &self.recovery_dir {
                 recovery::discard(dir, d.uid);
             }
@@ -635,6 +642,11 @@ impl Session {
             if self.journal.len() > 10_000 {
                 self.journal.drain(..1000);
             }
+        }
+        // A live presentation sends what the command changed, as one undo step.
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        if outer {
+            self.sync_live();
         }
         Ok(r)
     }

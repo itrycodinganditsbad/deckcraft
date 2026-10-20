@@ -67,3 +67,10 @@ pub fn file_len(path: &str) -> Option<u64> {
 pub fn file_len(_path: &str) -> Option<u64> {
     None
 }
+
+/// `path` with its links followed and made absolute, when it exists (to tell whether a file is inside the Craft
+/// Cloud folder). Reads nothing of the file.
+#[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+pub fn canonical(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::canonicalize(path).ok()
+}

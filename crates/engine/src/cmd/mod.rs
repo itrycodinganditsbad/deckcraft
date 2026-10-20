@@ -139,9 +139,17 @@ pub fn has_text_or_shapes(s: &Session) -> std::result::Result<(), String> {
 }
 
 pub fn can_undo(s: &Session) -> std::result::Result<(), String> {
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if let Some(can) = s.live_can_undo(false) {
+        return if can { Ok(()) } else { Err("nothing to undo".into()) };
+    }
     if s.active().is_some_and(|d| !d.history.undo.is_empty()) { Ok(()) } else { Err("nothing to undo".into()) }
 }
 pub fn can_redo(s: &Session) -> std::result::Result<(), String> {
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if let Some(can) = s.live_can_undo(true) {
+        return if can { Ok(()) } else { Err("nothing to redo".into()) };
+    }
     if s.active().is_some_and(|d| !d.history.redo.is_empty()) { Ok(()) } else { Err("nothing to redo".into()) }
 }
 

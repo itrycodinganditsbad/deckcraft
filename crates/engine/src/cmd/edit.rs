@@ -44,6 +44,12 @@ pub fn specs() -> Vec<CommandSpec> {
 }
 
 fn restore(s: &mut Session, redo: bool) -> Result<Value> {
+    // A live presentation undoes through Craft Cloud: only this machine's changes (its snapshots would take back the
+    // others' too).
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if let Some(r) = s.live_undo(redo) {
+        return r;
+    }
     let st = s.doc_mut()?;
     let (from, to) = if redo { (&mut st.history.redo, &mut st.history.undo) } else { (&mut st.history.undo, &mut st.history.redo) };
     let Some(e) = from.pop() else { return ok() };
