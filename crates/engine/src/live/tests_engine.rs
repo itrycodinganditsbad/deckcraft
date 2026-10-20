@@ -11,7 +11,7 @@ use craft_cloud_kit::testing::{Fake, Hub};
 use deckcraft_model::{Presentation, ShapeId};
 use serde_json::{Value, json};
 
-use super::session::{Banner, open_at};
+use super::session::{AUTOSAVE_AFTER, Banner, open_at};
 use super::tests::{agent, canon, corpus, diff};
 use crate::tools::{Mods, PointerEvent, PointerKind};
 use crate::{Session, cmd};
@@ -351,7 +351,7 @@ fn media_through_the_blob_store_without_freezing() {
 #[test]
 fn only_the_typing_machine_saves() {
     let hub = Hub::new();
-    let (mut a, mut b, _da, _db, _pc, laptop) = pair(&hub, "onesave.deckcraft");
+    let (mut a, mut b, _da, _db, pc, laptop) = pair(&hub, "onesave.deckcraft");
     let t = named(&a, "Target").unwrap();
     a.execute("slide.go", &json!({"index": 1})).unwrap();
     a.execute("text.edit", &json!({"id": t.0, "at": [0, 0]})).unwrap();
@@ -376,6 +376,7 @@ fn only_the_typing_machine_saves() {
     // Without the pc's saves: the laptop's file falls behind; it catches up at most once per CATCH_UP_EVERY.
     let start = Instant::now();
     let before = laptop.saves().len();
+    let typist = pc.saves().len();
     for _ in 0..20 {
         a.execute("text.insert", &json!({"text": "m"})).unwrap();
         for _ in 0..5 {
@@ -387,6 +388,9 @@ fn only_the_typing_machine_saves() {
     let windows = start.elapsed().as_secs() / craft_cloud_kit::CATCH_UP_EVERY.as_secs() + 1;
     let saves = (laptop.saves().len() - before) as u64;
     assert!(saves <= windows, "the laptop saved {saves} times in {:?}", start.elapsed());
+    if start.elapsed() < AUTOSAVE_AFTER {
+        assert_eq!(pc.saves().len(), typist, "the typing machine waits for 5 s of quiet");
+    }
 }
 
 /// Both machines edit and autosave: no conflict copy is ever made (the hub's saves carry records), each file ends
@@ -426,6 +430,23 @@ fn both_autosave_and_the_files_catch_up() {
         std::thread::sleep(Duration::from_millis(20));
     }
     assert_eq!(std::fs::metadata(db.0.join("save.deckcraft")).unwrap().modified().unwrap(), saved, "no save loop");
+}
+
+/// Revert on a live document brings back the file as it is on disk now (its last save), not the content from when the
+/// window was opened.
+#[test]
+fn revert_brings_back_the_last_save() {
+    let hub = Hub::new();
+    let (mut a, mut b, _da, _db, _pc, _l) = pair(&hub, "revert.deckcraft");
+    insert(&mut a, 11.0);
+    let saved = a.active().unwrap().doc.slides[1].shapes.len();
+    a.execute("file.save", &json!({})).unwrap();
+    insert(&mut a, 22.0);
+    converge(&mut a, &mut b, "edits");
+    a.execute("file.revert", &json!({})).unwrap();
+    converge(&mut a, &mut b, "the revert");
+    assert_eq!(deck(&a).slides[1].shapes.len(), saved, "the last save, with the first insert, without the second");
+    assert_eq!(deck(&b).slides[1].shapes.len(), saved);
 }
 
 /// The guard's roll-back sends nothing: a command that panics leaves the live document as it was.

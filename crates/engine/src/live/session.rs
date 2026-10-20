@@ -431,7 +431,9 @@ impl Session {
         // A newer DeckCraft's document is never written by this one (it would drop what this one doesn't know).
         let read_only = l.kit.status().read_only.is_some() || matches!(l.banner, Some(Banner::ReadOnly(_)));
         let in_the_way = busy || unsent || read_only || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
-        if !in_the_way && (local_due || l.kit.file_behind()) {
+        // (`file_behind` is true after an edit made here too: those wait for their 5 s.)
+        let behind = l.changed_at.is_none() && l.kit.file_behind();
+        if !in_the_way && (local_due || behind) {
             match self.live_write(uid) {
                 Ok(_) => changed = true,
                 Err(e) => {
@@ -471,6 +473,8 @@ impl Session {
         }
         crate::io::write_file(&l.path, &bytes).map_err(EngineError::Other)?;
         l.changed_at = None;
+        // The file read at the open is no longer the file.
+        l.file = None;
         if matches!(l.banner, Some(Banner::ChangedOutside)) {
             l.banner = None;
         }
@@ -549,7 +553,9 @@ impl Session {
         let uid = self.active()?.uid;
         let path = self.live.docs.get(&uid)?.path.clone();
         self.sync_live();
-        let file = match self.live.docs.get_mut(&uid).and_then(|l| l.file.take()) {
+        // "Bring it in" brings the outside edit read at the open; Revert brings the file as it is on disk now.
+        let outside = self.live.docs.get_mut(&uid).filter(|l| matches!(l.banner, Some(Banner::ChangedOutside))).and_then(|l| l.file.take());
+        let file = match outside {
             Some(f) => f,
             None => match crate::io::read_file(&path).map_err(EngineError::Other).and_then(|b| crate::cmd::file::open_presentation(&path, &b)) {
                 Ok(p) => p,
