@@ -506,5 +506,15 @@ fn a_newer_documents_opens_read_only() {
     .unwrap();
     s.poll_live();
     assert!(Arc::ptr_eq(&deck(&s), &before), "the edit was taken back");
+    // Nothing writes the newer document's file: not the autosave, not Ctrl+S.
+    let file = dir.0.join("newer.deckcraft");
+    let bytes = std::fs::read(&file).unwrap();
+    for _ in 0..30 {
+        s.poll_live();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(s.execute("file.save", &json!({})).is_err(), "Ctrl+S is refused");
+    s.poll_live();
+    assert_eq!(std::fs::read(&file).unwrap(), bytes, "the file is as it was");
     let _: Value = json!({});
 }

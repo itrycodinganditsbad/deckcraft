@@ -428,7 +428,10 @@ impl Session {
         // (the kit allows that at most once per CATCH_UP_EVERY), and nothing is in the way. A change that came from
         // elsewhere is never a reason by itself: the machine that made it saves it.
         let local_due = l.changed_at.is_some_and(|t| t.elapsed() >= AUTOSAVE_AFTER);
-        let in_the_way = busy || unsent || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
+        // A newer DeckCraft's document is never written by this one (it would drop what this one doesn't know).
+        let read_only = l.kit.status().read_only.is_some() || matches!(l.banner, Some(Banner::ReadOnly(_)));
+        let in_the_way =
+            busy || unsent || read_only || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
         if !in_the_way && (local_due || l.kit.file_behind()) {
             match self.live_write(uid) {
                 Ok(_) => changed = true,
@@ -491,6 +494,11 @@ impl Session {
         let l = self.live.docs.get(&uid)?;
         if format != "deckcraft" || l.path != path {
             return None;
+        }
+        if l.kit.status().read_only.is_some() {
+            return Some(Err(EngineError::Other(
+                "This presentation was made by a newer DeckCraft, which this one can't save without losing what it doesn't know. Update DeckCraft, or use Save As to keep a copy.".into(),
+            )));
         }
         self.sync_live();
         Some(self.live_write(uid).map(|n| json!({"path": path, "bytes": n, "live": true})))
