@@ -23,7 +23,7 @@ pub(crate) fn run(d: &mut LiveDeck) {
     let repair = std::mem::take(&mut d.repair);
     let ids = d.ids.clone();
     let pres = Arc::make_mut(&mut d.pres);
-    let slide_ids: HashSet<u32> = pres.slides.iter().map(|s| s.id.0).collect();
+    let slide_ids: HashSet<u32> = pres.slides.iter().map(|s| s.id.0).chain(ids.pending_ids()).collect();
     let mut comments_changed = false;
     for s in &mut pres.slides {
         if let Some(fixed) = fix_slide(s, &ids) {
@@ -68,7 +68,7 @@ pub(crate) fn run(d: &mut LiveDeck) {
     // A slide whose layout a merge deleted takes the first one (as `deckcraft_format::repair` does on opening; its
     // other repairs copy every slide, too slow after each remote keystroke).
     let first_layout = pres.masters.first().and_then(|m| m.layouts.first()).map(|l| l.id);
-    let missing: Vec<usize> = pres.slides.iter().enumerate().filter(|(_, s)| pres.layout(s.layout).is_none()).map(|(i, _)| i).collect();
+    let missing: Vec<usize> = pres.slides.iter().enumerate().filter(|(_, s)| pres.layout(s.layout).is_none() && !ids.is_pending(s.layout.0)).map(|(i, _)| i).collect();
     if let Some(first) = first_layout {
         for i in missing {
             if let Some(s) = pres.slides.get_mut(i) {
@@ -81,11 +81,13 @@ pub(crate) fn run(d: &mut LiveDeck) {
 }
 
 /// A slide with its dangling references dropped, if it had any.
-fn fix_slide(s: &Slide, _ids: &Ids) -> Option<Slide> {
+fn fix_slide(s: &Slide, ids: &Ids) -> Option<Slide> {
     let mut here: HashSet<ShapeId> = HashSet::new();
     deckcraft_model::walk(&s.shapes, &mut |sh, _| {
         here.insert(sh.id);
     });
+    // Only what a merge deleted is dangling: an element not seen yet (its change still on its way) isn't.
+    here.extend(ids.pending_ids().map(ShapeId));
     let mut dangling = false;
     deckcraft_model::walk(&s.shapes, &mut |sh, _| {
         if let ShapeKind::Connector { start, end } = &sh.kind {

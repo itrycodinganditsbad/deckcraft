@@ -701,3 +701,31 @@ fn a_picture_inserted_here_shows_there() {
     let ShapeKind::Picture { fill } = shape_named(p, 0, "New picture").unwrap().kind else { panic!() };
     assert_eq!(p.media(fill.media).map(|m| m.data.as_slice()), Some(bytes.as_slice()));
 }
+
+/// `normalise` drops only references to what a merge deleted: a slide's layout, a comment's shape or a section's
+/// slide that refers to an element not seen yet (its change still on its way) is left alone, and resolves to that
+/// element once it comes.
+#[test]
+fn references_to_elements_not_seen_yet_are_kept() {
+    let hub = Hub::new();
+    let pc = hub.machine("pc").unwrap();
+    let mut d = LiveDeck::new(Arc::new(corpus()), shared(&pc));
+    let (layout, shape, slide) = (craft_cloud_kit::ElemId::new(), craft_cloud_kit::ElemId::new(), craft_cloud_kit::ElemId::new());
+    let mut p = (*d.pres).clone();
+    let ids = Arc::make_mut(&mut d.ids);
+    let (l, s, sl) = (ids.local_or_pending(layout, &mut p).unwrap(), ids.local_or_pending(shape, &mut p).unwrap(), ids.local_or_pending(slide, &mut p).unwrap());
+    let first = Arc::make_mut(&mut p.slides[0]);
+    first.layout = deckcraft_model::LayoutId(l);
+    first.comments.push(Comment { text: "on a shape still coming".into(), shape: Some(ShapeId(s)), ..Default::default() });
+    p.sections[0].slides.push(deckcraft_model::SlideId(sl));
+    d.pres = Arc::new(p.clone());
+    super::normalise::run(&mut d);
+    let after = &d.pres;
+    assert_eq!(after.slides[0].layout.0, l, "the layout stays");
+    assert_eq!(after.slides[0].comments.last().and_then(|c| c.shape), Some(ShapeId(s)), "the comment's shape stays");
+    assert!(after.sections[0].slides.contains(&deckcraft_model::SlideId(sl)), "the section keeps its slide");
+    // The element coming takes the id held for it.
+    let ids = Arc::make_mut(&mut d.ids);
+    assert_eq!(ids.local_or_new(shape, &mut p), Some(s));
+    assert!(!ids.is_pending(s));
+}

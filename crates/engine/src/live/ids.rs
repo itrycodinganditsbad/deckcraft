@@ -23,6 +23,9 @@ pub struct Ids {
     pub(crate) comments: HashMap<ElemId, Vec<ElemId>>,
     pub(crate) sections: Vec<ElemId>,
     pub(crate) shows: Vec<ElemId>,
+    /// Local ids given to elements only referred to so far (a change whose element comes later): a reference to one
+    /// isn't dangling, and the element takes that id when it comes.
+    pending: std::collections::HashSet<u32>,
 }
 
 impl Ids {
@@ -46,12 +49,34 @@ impl Ids {
 
     /// The local id of `elem`, given a fresh one from `p` if it has none (an element another machine added).
     pub(crate) fn local_or_new(&mut self, elem: ElemId, p: &mut Presentation) -> Option<u32> {
+        if let Some(l) = self.to_local.get(&elem).copied() {
+            self.pending.remove(&l);
+            return Some(l);
+        }
+        let l = p.alloc_id()?;
+        self.bind(l, elem);
+        Some(l)
+    }
+
+    /// The local id a reference to `elem` resolves to: the element's, or one held for it until it comes.
+    pub(crate) fn local_or_pending(&mut self, elem: ElemId, p: &mut Presentation) -> Option<u32> {
         if let Some(l) = self.to_local.get(&elem) {
             return Some(*l);
         }
         let l = p.alloc_id()?;
         self.bind(l, elem);
+        self.pending.insert(l);
         Some(l)
+    }
+
+    /// The local ids held for elements not seen yet.
+    pub(crate) fn pending_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.pending.iter().copied()
+    }
+
+    /// Whether `local` is held for an element not seen yet.
+    pub(crate) fn is_pending(&self, local: u32) -> bool {
+        self.pending.contains(&local)
     }
 
     pub(crate) fn bind(&mut self, local: u32, elem: ElemId) {

@@ -98,7 +98,7 @@ fn is_parts(x: &Json) -> bool {
 }
 
 /// Element references in `v` as local ids: an `id` the map doesn't know is an element another machine made (it gets
-/// a fresh local id from `p`); any other unknown reference is dangling (0, or left out).
+/// a fresh local id from `p`); a reference to one not seen yet gets a local id held for it (`Ids::is_pending`).
 pub(crate) fn to_local(v: &mut Json, ids: &mut Ids, p: &mut Presentation) {
     match v {
         Json::Object(map) => {
@@ -106,19 +106,27 @@ pub(crate) fn to_local(v: &mut Json, ids: &mut Ids, p: &mut Presentation) {
                 let k = k.as_str();
                 if ID_KEYS.contains(&k) && elem_of(x).is_some() {
                     let e = elem_of(x);
+                    // An element not seen yet (its change comes later) gets a local id held for it: the reference
+                    // isn't dangling, and stays the same element.
                     let local = match e {
                         Some(e) if k == "id" => ids.local_or_new(e, p),
-                        Some(e) => ids.local(e),
+                        Some(e) => ids.local_or_pending(e, p),
                         None => None,
                     };
                     *x = Json::from(local.unwrap_or(0));
                 } else if k == "slides" && x.as_array().is_some_and(|a| a.iter().all(|s| elem_of(s).is_some())) {
                     if let Json::Array(a) = x {
-                        *a = a.iter().filter_map(|s| elem_of(s).and_then(|e| ids.local(e))).map(Json::from).collect();
+                        let mut out = Vec::with_capacity(a.len());
+                        for s in a.iter() {
+                            if let Some(l) = elem_of(s).and_then(|e| ids.local_or_pending(e, p)) {
+                                out.push(Json::from(l));
+                            }
+                        }
+                        *a = out;
                     }
                 } else if (k == "start" || k == "end") && x.as_array().is_some_and(|a| a.len() == 2 && a.first().and_then(elem_of).is_some()) {
                     if let Json::Array(a) = x {
-                        match a.first().and_then(elem_of).and_then(|e| ids.local(e)) {
+                        match a.first().and_then(elem_of).and_then(|e| ids.local_or_pending(e, p)) {
                             Some(l) => {
                                 if let Some(first) = a.first_mut() {
                                     *first = Json::from(l);
@@ -129,15 +137,16 @@ pub(crate) fn to_local(v: &mut Json, ids: &mut Ids, p: &mut Presentation) {
                     }
                 } else if k == "parts" && x.as_array().is_some_and(|a| a.iter().all(|p| p.get(2).and_then(elem_of).is_some())) {
                     if let Json::Array(a) = x {
-                        a.retain_mut(|part| match part.get(2).and_then(elem_of).and_then(|e| ids.local(e)) {
-                            Some(l) => {
+                        let mut kept = Vec::with_capacity(a.len());
+                        for mut part in std::mem::take(a) {
+                            if let Some(l) = part.get(2).and_then(elem_of).and_then(|e| ids.local_or_pending(e, p)) {
                                 if let Some(id) = part.get_mut(2) {
                                     *id = Json::from(l);
                                 }
-                                true
+                                kept.push(part);
                             }
-                            None => false,
-                        });
+                        }
+                        *a = kept;
                     }
                 } else {
                     to_local(x, ids, p);
@@ -287,6 +296,8 @@ mod tests {
         to_local(&mut w, &mut ids, &mut p);
         assert!(w["id"].as_u64().is_some_and(|n| n > 9 || n > 0));
         assert_eq!(ids.elem(u32::try_from(w["id"].as_u64().unwrap_or(0)).unwrap_or(0)), Some(other));
-        assert_eq!(w["shape"], 0);
+        // A reference to an element not seen yet: a local id held for it, the same when the element comes.
+        let held = u32::try_from(w["shape"].as_u64().unwrap_or(0)).unwrap_or(0);
+        assert!(held != 0 && ids.is_pending(held));
     }
 }
