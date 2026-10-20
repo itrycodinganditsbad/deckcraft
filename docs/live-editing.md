@@ -20,6 +20,10 @@ every edit on the others as it is made. Anything else opens as before. `DECKCRAF
 - **The window:** the status bar's badge says Live, Waiting, Offline or Read-only; Backstage shows the Craft Cloud
   account and the presentations open on every computer; a banner offers to bring in a file changed outside Craft;
   other computers' selections are outlined in their colour.
+- **Big changes** (a paste of megabytes, deleting many slides) go whole: no computer ever shows part of one. One
+  that came only part of the way (its sender stopped) is dropped, and the window catches up with Craft Cloud (the
+  badge says how often). Every computer needs this DeckCraft and a Craft Cloud agent that knows such changes (older
+  ones refuse them, and open this layout read-only).
 - **Not live:** a presentation with a picture or video over 64 MB opens as a plain file, with a message.
 - **Known gaps:**
   - Undo of a delete brings back a copy of what was deleted: edits another computer made to it in the meantime
