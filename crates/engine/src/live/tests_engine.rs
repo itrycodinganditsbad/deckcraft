@@ -661,6 +661,22 @@ fn keeping_the_live_document_is_a_command() {
     }
 }
 
+/// AutoRecover of a live presentation reopens it as an untitled copy: saving it can't write an older snapshot over
+/// the live file.
+#[test]
+fn a_recovered_live_presentation_has_no_path() {
+    let hub = Hub::new();
+    let (mut a, _b, _da, _db, _pc, _l) = pair(&hub, "recover.deckcraft");
+    insert(&mut a, 5.0);
+    assert!(a.active().unwrap().is_dirty());
+    let dir = Folder::new("recovery");
+    crate::recovery::save(&a, &dir.0).unwrap();
+    let mut s = Session::new();
+    let opened = crate::recovery::open(&mut s, &dir.0).unwrap();
+    assert_eq!(opened.len(), 1);
+    assert_eq!(s.active().unwrap().path, None, "no path: Save asks where");
+}
+
 /// A document a newer DeckCraft made opens read-only: the banner says to update, and an edit is taken back.
 #[test]
 fn a_newer_documents_opens_read_only() {

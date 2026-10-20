@@ -176,3 +176,22 @@ fn another_machines_selection_is_outlined() {
     }
     let _ = h.query_by_label("laptop");
 }
+
+/// A `.deckcraft` file handed over by the system (double-click, command line) opens on the background thread when
+/// live documents are on: the window doesn't wait for Craft Cloud.
+#[test]
+fn files_from_the_system_open_in_the_background() {
+    let hub = Hub::new();
+    let pc = hub.machine("pc").unwrap();
+    let dir = Folder::new("pc");
+    let path = dir.0.join("system.deckcraft");
+    std::fs::write(&path, deckcraft_engine::cmd::file::save_bytes(&deck(), "deckcraft").unwrap()).unwrap();
+    let mut session = Session::new();
+    session.enable_live(agent(&pc), None);
+    let mut app = SlideApp::new(session, Services::default());
+    let failed = app.open_from_system(&[path.to_string_lossy().into_owned()]);
+    assert!(failed.is_empty());
+    assert!(app.opening.is_some(), "opening on its thread");
+    let mut h = harness(app);
+    until(&mut h, None, "the presentation", |h| h.state().session.active().is_some());
+}

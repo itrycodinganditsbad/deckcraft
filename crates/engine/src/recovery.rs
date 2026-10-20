@@ -134,7 +134,11 @@ pub fn save(s: &Session, dir: &Path) -> Result<usize> {
         let (doc, meta) = files(dir, d.uid);
         let bytes = deckcraft_format::save(&d.doc).map_err(|e| EngineError::Other(e.to_string()))?;
         write_atomic(&doc, &bytes)?;
-        let m = json!({"path": d.path, "title": d.title(), "saved": now_secs(), "owner": instance_id()});
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        let live = s.is_live_uid(d.uid);
+        #[cfg(not(all(feature = "live", not(target_arch = "wasm32"))))]
+        let live = false;
+        let m = json!({"path": d.path, "title": d.title(), "saved": now_secs(), "owner": instance_id(), "live": live});
         write_atomic(&meta, m.to_string().as_bytes())?;
         n += 1;
     }
@@ -193,7 +197,11 @@ pub fn open(s: &mut Session, dir: &Path) -> Result<Vec<usize>> {
         let Some(bytes) = read_regular(&doc, MAX_ENTRY_BYTES) else { continue };
         let Ok(mut d) = deckcraft_format::load(&bytes) else { continue };
         deckcraft_format::repair(&mut d);
-        let path = meta.get("path").and_then(Value::as_str).map(str::to_string);
+        // A live presentation's file is the live document's: a recovered copy opens without it, so saving it can't
+        // write an older snapshot over the live file (its edits are in the live document; the copy keeps any that
+        // didn't reach it).
+        let live = meta.get("live").and_then(Value::as_bool).unwrap_or(false);
+        let path = meta.get("path").and_then(Value::as_str).map(str::to_string).filter(|_| !live);
         let title = meta.get("title").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or("Presentation").to_string();
         // Take the entry over (so another instance starting now leaves it alone), keeping its
         // snapshot until this one writes a newer one.

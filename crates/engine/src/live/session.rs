@@ -281,6 +281,11 @@ impl Session {
         !self.live.docs.is_empty()
     }
 
+    /// Whether the presentation `uid` is live.
+    pub fn is_live_uid(&self, uid: u64) -> bool {
+        self.live.docs.contains_key(&uid)
+    }
+
     /// Whether the active presentation is live.
     pub fn is_live(&self) -> bool {
         self.active().is_some_and(|d| self.live.docs.contains_key(&d.uid))

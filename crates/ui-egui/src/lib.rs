@@ -1204,6 +1204,13 @@ impl SlideApp {
         let mut failed = Vec::new();
         let mut last = None;
         for p in paths {
+            // A live open can wait up to 30 s for Craft Cloud: off the UI thread, so the window shows at once.
+            #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+            if self.session.live_agent().is_some() && p.to_ascii_lowercase().ends_with(".deckcraft") && self.opening.is_none() {
+                self.open_path_in_background(p);
+                last = Some(p);
+                continue;
+            }
             match self.open_path(p) {
                 Ok(()) => last = Some(p),
                 Err(e) => failed.push((p.clone(), e)),
