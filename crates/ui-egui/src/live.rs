@@ -92,9 +92,11 @@ pub fn badge(app: &SlideApp, ui: &mut Ui) {
         if let Some(waiting) = app.session.live_media_waiting() {
             ui.label(RichText::new(waiting).weak()).on_hover_text("The presentation saves once every picture and video is here.");
         }
-        if status.gaps > 0 {
-            ui.label(RichText::new(format!("caught up {}×", status.gaps)).weak())
-                .on_hover_text("Changes from another computer that came only part of the way; nothing of them was applied, and this window caught up with Craft Cloud.");
+        // Another computer on an older Craft Cloud may lack this one's big changes (it can't take them).
+        if let Some(older) = app.session.live_older_peers() {
+            let warn = ui.visuals().warn_fg_color;
+            ui.label(RichText::new(older).color(warn))
+                .on_hover_text("Its Craft Cloud is too old for big changes: they don't reach it until it is updated. Edits here are kept.");
         }
         ui.style_mut().override_font_id = None;
     }

@@ -788,7 +788,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -932,7 +932,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-api"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=b394e7555d998fc1367e594a7a550260f7992a65#b394e7555d998fc1367e594a7a550260f7992a65"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=08734177f1cca966406fade2ffe0994d09362ee4#08734177f1cca966406fade2ffe0994d09362ee4"
 dependencies = [
  "blake3",
  "caseless",
@@ -945,7 +945,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-app"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=b394e7555d998fc1367e594a7a550260f7992a65#b394e7555d998fc1367e594a7a550260f7992a65"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=08734177f1cca966406fade2ffe0994d09362ee4#08734177f1cca966406fade2ffe0994d09362ee4"
 dependencies = [
  "craft-cloud-api",
  "httparse",
@@ -959,7 +959,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-egui"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=b394e7555d998fc1367e594a7a550260f7992a65#b394e7555d998fc1367e594a7a550260f7992a65"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=08734177f1cca966406fade2ffe0994d09362ee4#08734177f1cca966406fade2ffe0994d09362ee4"
 dependencies = [
  "craft-cloud-app",
  "craft-cloud-kit",
@@ -969,7 +969,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-kit"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=b394e7555d998fc1367e594a7a550260f7992a65#b394e7555d998fc1367e594a7a550260f7992a65"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=08734177f1cca966406fade2ffe0994d09362ee4#08734177f1cca966406fade2ffe0994d09362ee4"
 dependencies = [
  "blake3",
  "craft-cloud-api",
@@ -3358,7 +3358,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4565,7 +4565,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6366,15 +6366,6 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

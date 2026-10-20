@@ -838,3 +838,32 @@ fn a_newer_documents_opens_read_only() {
     assert_eq!(std::fs::read(&file).unwrap(), bytes, "the file is as it was");
     let _: Value = json!({});
 }
+
+/// Another computer on an older Craft Cloud (its presence from a kit before versions in presence) is named, for the
+/// badge; a computer whose Craft Cloud is too old for live editing opens the presentation as a plain file, saying to
+/// update it.
+#[test]
+fn an_older_craft_cloud_is_named() {
+    let hub = Hub::new();
+    let (mut a, mut b, _da, _db, pc, laptop) = pair(&hub, "older.deckcraft");
+    assert_eq!(a.live_older_peers(), None);
+    let docs = laptop.client().documents().unwrap();
+    let Ok(craft_cloud_app::live::Opened::Live(old)) = docs.open("older.deckcraft", "deckcraft") else { panic!("not live") };
+    let mut frame = 99u64.to_be_bytes().to_vec();
+    frame.extend_from_slice(br#"{"m":"old laptop","s":[]}"#);
+    old.presence(&frame).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while a.live_older_peers().is_none() {
+        assert!(Instant::now() < deadline, "the older one never showed");
+        a.poll_live();
+        b.poll_live();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(a.live_older_peers().as_deref(), Some("old laptop runs an older Craft Cloud; update it"));
+    assert!(a.live_presence().iter().any(|p| p.machine == "laptop" && !p.older), "the laptop's own window is current");
+    pc.too_old();
+    let pres = corpus();
+    let bytes = deckcraft_format::save(&pres).unwrap();
+    let opened = open_at(&agent(&pc), "plain.deckcraft", &pres, &bytes, "pc".into());
+    assert!(matches!(&opened, Some(Err(why)) if why == super::session::AGENT_TOO_OLD), "not live, and why");
+}

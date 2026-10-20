@@ -11,12 +11,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use craft_cloud_kit::{Agent, AgentBlobs, KitError, Open, Session as Kit, Status};
+use craft_cloud_kit::{Agent, AgentBlobs, KitError, NotLive, Open, Session as Kit, Status};
 use deckcraft_model::{Presentation, ShapeId};
 use serde_json::{Value, json};
 
 use super::{Deck, LiveDeck, Shared};
 use crate::{EngineError, Result, Session};
+
+/// Why a presentation opens as a plain file when Craft Cloud on this computer is too old for live editing.
+pub const AGENT_TOO_OLD: &str = "Craft Cloud on this computer is older than DeckCraft; update Craft Cloud to edit this presentation live";
 
 /// An autosave this long after the last local change.
 pub const AUTOSAVE_AFTER: Duration = Duration::from_secs(5);
@@ -170,6 +173,8 @@ pub fn open_at(agent: &Agent, rel: &str, pres: &Presentation, bytes: &[u8], mach
     let model = Arc::new(LiveDeck::new(Arc::new(pres.clone()), shared).with_machine(&machine));
     match Kit::<Deck>::open(agent, rel, model, Some(bytes)) {
         Ok(Open::Live(kit)) => Some(Ok(LiveOpen { kit: *kit, machine })),
+        // (Said: it would be live with an updated Craft Cloud.)
+        Ok(Open::NotLive(NotLive::AgentTooOld)) => Some(Err(AGENT_TOO_OLD.to_owned())),
         Ok(Open::NotLive(_)) => None,
         Err(e) => Some(Err(e.to_string())),
     }
@@ -238,6 +243,8 @@ pub struct Presence {
     pub slot: usize,
     pub slide: Option<deckcraft_model::SlideId>,
     pub shapes: Vec<ShapeId>,
+    /// It runs an older Craft Cloud (too old for big changes): "<machine> runs an older Craft Cloud; update it".
+    pub older: bool,
 }
 
 /// One live presentation.
@@ -368,6 +375,20 @@ impl Session {
         self.live.docs.get(&d.uid)?.banner.clone()
     }
 
+    /// What the badge says of the other machines on the active presentation that run an older Craft Cloud: "<machine>
+    /// runs an older Craft Cloud; update it" (`None` when none does).
+    pub fn live_older_peers(&self) -> Option<String> {
+        let mut names: Vec<String> = self.live_presence().into_iter().filter(|p| p.older).map(|p| p.machine).collect();
+        names.sort();
+        names.dedup();
+        match names.as_slice() {
+            [] => None,
+            [one] if one.is_empty() => Some("another computer runs an older Craft Cloud; update it".to_owned()),
+            [one] => Some(format!("{one} runs an older Craft Cloud; update it")),
+            more => Some(format!("{} run an older Craft Cloud; update it", more.join(", "))),
+        }
+    }
+
     /// The other machines' selections on the active presentation.
     pub fn live_presence(&self) -> Vec<Presence> {
         let Some(d) = self.active() else { return Vec::new() };
@@ -385,6 +406,7 @@ impl Session {
                     slot: (*peer % 8) as usize,
                     slide: v.get("slide").and_then(elem).map(deckcraft_model::SlideId),
                     shapes: v.get("s").and_then(Value::as_array).map(|a| a.iter().filter_map(elem).map(ShapeId).collect()).unwrap_or_default(),
+                    older: p.older(),
                 })
             })
             .collect();

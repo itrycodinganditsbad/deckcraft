@@ -89,15 +89,14 @@ fn texts(s: &Session) -> Vec<String> {
 }
 
 fn run_seed(seed: u64, steps: usize) {
-    // A set of fragments that stopped coming is dropped soon (the session catches up by opening the document again);
-    // frames of 16 KiB, so pastes of tens of KB go in fragments.
-    craft_cloud_app::live::set_fragment_patience_for_tests(Duration::from_millis(300));
+    // Frames of 16 KiB, so pastes of tens of KB go in fragments.
     craft_cloud_app::live::set_frame_limit_for_tests(16 * 1024);
     let hub = Hub::new();
     let (pc, laptop) = (hub.machine("pc").unwrap(), hub.machine("laptop").unwrap());
-    // Fragments on their way to the windows: some dropped, some held back a few steps (out of order).
+    // A machine's link stops inside a change in fragments (it sleeps part of the way through, or a few steps): it
+    // keeps what came, and its window gets the change whole once the rest is there, as with the agent.
     for (i, f) in [&pc, &laptop].into_iter().enumerate() {
-        f.set_fragment_faults(Some(FragmentFaults { seed: seed.wrapping_mul(5).wrapping_add(i as u64), drop: 150, delay: 300, max_delay: 4 }));
+        f.set_fragment_faults(Some(FragmentFaults { seed: seed.wrapping_mul(5).wrapping_add(i as u64), sleep: 150, delay: 300, max_delay: 4 }));
     }
     // The pastes made: their first 64 characters and their length. A text that holds a paste's start holds it whole.
     let mut pastes: Vec<(String, usize)> = Vec::new();
