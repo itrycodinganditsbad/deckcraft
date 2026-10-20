@@ -117,3 +117,54 @@ fn live_speed() {
     assert!(rm < Duration::from_millis(5), "remote keystroke median {rm:?}");
     assert!(open < Duration::from_secs(1), "open {open:?}");
 }
+
+/// The same keystrokes through the engine, as the window makes them: `text.insert` (the command, the hook's
+/// `sync_live`, the adapter's wrap and the kit) and the other machine's `poll_live` that brings each into its document.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "speed is measured in release builds")]
+fn live_speed_through_the_engine() {
+    use super::tests_engine::{Folder, engine_join, engine_open};
+    let deck = big_deck();
+    let hub = Hub::new();
+    let (pc, laptop) = (hub.machine("pc").unwrap(), hub.machine("laptop").unwrap());
+    let (da, db) = (Folder::new("pc"), Folder::new("laptop"));
+    let mut a = engine_open(&pc, &da, "big.deckcraft", &deck, "pc");
+    a.execute("file.save", &serde_json::json!({})).unwrap();
+    let saved = std::fs::read(da.0.join("big.deckcraft")).unwrap();
+    let mut b = engine_join(&laptop, &db, "big.deckcraft", &saved, "laptop");
+    let shape = {
+        let p = &a.active().unwrap().doc;
+        p.slides[100].shapes.iter().find(|x| x.text.is_some()).map(|x| x.id).unwrap()
+    };
+    a.execute("slide.go", &serde_json::json!({"index": 100})).unwrap();
+    a.execute("text.edit", &serde_json::json!({"id": shape.0, "at": [0, 0]})).unwrap();
+    let (mut local, mut remote) = (Vec::new(), Vec::new());
+    for _ in 0..200 {
+        let t = Instant::now();
+        a.execute("text.insert", &serde_json::json!({"text": "x"})).unwrap();
+        local.push(t.elapsed());
+        let before = b.active().unwrap().doc.clone();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            a.poll_live();
+            let t = Instant::now();
+            b.poll_live();
+            if !Arc::ptr_eq(&before, &b.active().unwrap().doc) {
+                remote.push(t.elapsed());
+                break;
+            }
+            assert!(Instant::now() < deadline, "the keystroke never came");
+            std::thread::sleep(Duration::from_micros(200));
+        }
+    }
+    let typed = |s: &crate::Session| {
+        let p = &s.active().unwrap().doc;
+        p.slides[100].shapes.iter().filter_map(|x| x.text.as_ref()).map(|t| t.text()).find(|t| t.starts_with('x')).unwrap_or_default()
+    };
+    assert!(typed(&b).starts_with(&"x".repeat(200)), "every keystroke came");
+    let (lw, rw) = (local.iter().max().copied().unwrap_or_default(), remote.iter().max().copied().unwrap_or_default());
+    let (lm, rm) = (median(&mut local), median(&mut remote));
+    eprintln!("live speed through the engine: keystroke text.insert median {lm:?} (worst {lw:?}); remote poll_live median {rm:?} (worst {rw:?})");
+    assert!(lm < Duration::from_millis(10), "local keystroke median {lm:?}");
+    assert!(rm < Duration::from_millis(10), "remote keystroke median {rm:?}");
+}

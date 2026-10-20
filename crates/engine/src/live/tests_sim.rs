@@ -155,30 +155,6 @@ fn run_seed(seed: u64, steps: usize) {
                 let back = r.read::<super::Deck>(&base).unwrap();
                 diff(&canon(&model), &canon(&back), "")
             };
-            if std::env::var_os("LIVE_DEBUG").is_some() {
-                for (n, s) in [("pc", &mut a), ("laptop", &mut b)] {
-                    let kit = s.live_kit().unwrap();
-                    let mut r = craft_cloud_kit::raw::Replica::default();
-                    r.import(&[kit.snapshot().unwrap()], &["slides", "deck"]).unwrap();
-                    let tree = r.doc.get_tree("slides");
-                    let mut by_id: std::collections::HashMap<String, Vec<String>> = Default::default();
-                    for t in tree.nodes() {
-                        let Ok(meta) = tree.get_meta(t) else { continue };
-                        let id = format!("{:?}", meta.get("$id"));
-                        let xfrm = format!("{:?}", meta.get("xfrm")).chars().take(80).collect::<String>();
-                        by_id.entry(id).or_default().push(format!(
-                            "{t:?} deleted={:?} parent={:?} xfrm={xfrm}",
-                            tree.is_node_deleted(&t),
-                            tree.parent(t)
-                        ));
-                    }
-                    for (id, list) in by_id {
-                        if list.len() > 1 {
-                            eprintln!("DBG {n}: {} nodes for {id}: {list:#?}", list.len());
-                        }
-                    }
-                }
-            }
             panic!(
                 "seed {seed}: never the same: {d:?}; in step: {in_step}; the pc against its document: {:?} ({:?}); the laptop: {:?} ({:?}); {log:?}",
                 own(&mut a),

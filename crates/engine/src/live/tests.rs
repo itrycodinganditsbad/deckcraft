@@ -279,7 +279,7 @@ pub(crate) fn decks() -> Vec<(String, Presentation)> {
 #[test]
 fn every_deck_comes_out_on_the_other_machine_as_it_went_in() {
     let hub = Hub::new();
-    let (pc, laptop) = (hub.machine("pc").unwrap(), hub.machine("laptop").unwrap());
+    let (pc, laptop, third) = (hub.machine("pc").unwrap(), hub.machine("laptop").unwrap(), hub.machine("third").unwrap());
     for (k, (name, deck)) in decks().into_iter().enumerate() {
         let path = format!("decks/{k}.deckcraft");
         let mut a = open(&pc, &path, deck);
@@ -296,9 +296,24 @@ fn every_deck_comes_out_on_the_other_machine_as_it_went_in() {
             assert!(Instant::now() < deadline, "{name}: {d}");
             std::thread::sleep(Duration::from_millis(5));
         }
-        // And back: what the laptop read, written again, is the same document.
-        let reread = canon(b.model());
-        assert_eq!(reread, want, "{name}");
+        // And back: what the laptop read, written into a document of its own and read on a third machine, is the
+        // same deck.
+        let again = format!("decks/{k}-again.deckcraft");
+        let mut c = open(&laptop, &again, (*b.model().pres).clone());
+        let mut d = open(&third, &again, nothing());
+        // By the new document's element ids.
+        let want = canon(c.model());
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            for s in [&mut b, &mut c, &mut d] {
+                s.poll();
+                push_media(s);
+                pull_media(s).unwrap();
+            }
+            let Some(x) = diff(&want, &canon(d.model()), "") else { break };
+            assert!(Instant::now() < deadline, "{name}, written again: {x}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 }
 

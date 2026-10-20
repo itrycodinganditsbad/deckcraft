@@ -168,13 +168,22 @@ fn another_machines_selection_is_outlined() {
     assert_eq!(p[0].machine, "laptop");
     let mine = h.state().session.active().unwrap().doc.slides[0].shapes[0].id;
     assert_eq!(p[0].shapes, vec![mine], "the laptop's shape, by the pc's own id");
-    if let Some(img) = shot(&mut h, "presence-outline") {
-        // The outline's colour is somewhere on the canvas.
-        let want = crate::live::peer_colour(p[0].slot);
-        let found = img.iter().any(|px| *px == [want.r(), want.g(), want.b()]);
-        assert!(found, "the laptop's outline is drawn");
-    }
-    let _ = h.query_by_label("laptop");
+    // The outline goes round the shape's box on screen, in the laptop's colour, with its name above it.
+    let xf = crate::canvas::Xf { origin: egui::pos2(10.0, 20.0), scale: 0.5 };
+    let marks = crate::live::presence_marks(h.state(), xf);
+    assert_eq!(marks.len(), 1, "{marks:?}");
+    let box_ = {
+        let st = h.state().session.active().unwrap();
+        deckcraft_engine::cmd::xfrm_of(&st.doc, &st.selection, st.shape(mine).unwrap())
+    };
+    assert_eq!(marks[0].colour, crate::live::peer_colour(p[0].slot));
+    assert_eq!(marks[0].outlines.len(), 1);
+    let o = marks[0].outlines[0];
+    let at = |x: f64, y: f64| xf.to_screen(deckcraft_geom::Point::new(x, y));
+    assert!((o[0] - at(box_.x, box_.y)).length() < 0.5, "top left: {o:?}");
+    assert!((o[2] - at(box_.x + box_.w, box_.y + box_.h)).length() < 0.5, "bottom right: {o:?}");
+    assert_eq!(marks[0].tag, Some((o[0], "laptop".to_owned())), "the name tag");
+    shot(&mut h, "presence-outline");
 }
 
 /// A `.deckcraft` file handed over by the system (double-click, command line) opens on the background thread when

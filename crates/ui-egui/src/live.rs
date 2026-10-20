@@ -158,35 +158,52 @@ pub fn backstage(app: &mut SlideApp, ui: &mut Ui) {
     }
 }
 
-/// The other machines' selections on the slide shown: an outline in each machine's colour, with its name.
-pub fn presence(app: &SlideApp, painter: &egui::Painter, xf: Xf) {
-    let Some(st) = app.session.active() else { return };
+/// One other machine's selection on the slide shown: its colour, each selected shape's corners on screen, and where
+/// its name goes (above the first shape's first corner).
+#[derive(Debug)]
+pub(crate) struct Mark {
+    pub(crate) colour: Color32,
+    pub(crate) outlines: Vec<[Pos2; 4]>,
+    pub(crate) tag: Option<(Pos2, String)>,
+}
+
+/// The other machines' selections on the slide shown, placed by `xf`.
+pub(crate) fn presence_marks(app: &SlideApp, xf: Xf) -> Vec<Mark> {
+    let Some(st) = app.session.active() else { return vec![] };
     if st.selection.target != deckcraft_engine::Target::Slides {
-        return;
+        return vec![];
     }
-    let Some(slide) = st.current_slide() else { return };
+    let Some(slide) = st.current_slide() else { return vec![] };
+    let mut out = vec![];
     for p in app.session.live_presence() {
         if p.slide != Some(slide.id) {
             continue;
         }
-        let colour = peer_colour(p.slot);
-        let mut first: Option<Pos2> = None;
+        let mut outlines = vec![];
         for id in &p.shapes {
             let Some(sh) = st.shape(*id) else { continue };
             let x = deckcraft_engine::cmd::xfrm_of(&st.doc, &st.selection, sh);
             let a = x.affine();
-            let pts = [(0.0, 0.0), (x.w, 0.0), (x.w, x.h), (0.0, x.h)].map(|(u, v)| xf.to_screen(a * deckcraft_geom::Point::new(u, v)));
-            for i in 0..4 {
-                painter.line_segment([pts[i], pts[(i + 1) % 4]], Stroke::new(2.0, colour));
-            }
-            first.get_or_insert(pts[0]);
+            outlines.push([(0.0, 0.0), (x.w, 0.0), (x.w, x.h), (0.0, x.h)].map(|(u, v)| xf.to_screen(a * deckcraft_geom::Point::new(u, v))));
         }
-        if let Some(at) = first
-            && !p.machine.is_empty()
-        {
-            let galley = painter.layout_no_wrap(p.machine.clone(), theme::font(11.0), Color32::WHITE);
+        let tag = outlines.first().filter(|_| !p.machine.is_empty()).map(|o| (o[0], p.machine.clone()));
+        out.push(Mark { colour: peer_colour(p.slot), outlines, tag });
+    }
+    out
+}
+
+/// The other machines' selections on the slide shown: an outline in each machine's colour, with its name.
+pub fn presence(app: &SlideApp, painter: &egui::Painter, xf: Xf) {
+    for m in presence_marks(app, xf) {
+        for pts in &m.outlines {
+            for i in 0..4 {
+                painter.line_segment([pts[i], pts[(i + 1) % 4]], Stroke::new(2.0, m.colour));
+            }
+        }
+        if let Some((at, name)) = m.tag {
+            let galley = painter.layout_no_wrap(name, theme::font(11.0), Color32::WHITE);
             let r = egui::Rect::from_min_size(at - egui::vec2(0.0, galley.size().y + 4.0), galley.size() + egui::vec2(8.0, 4.0));
-            painter.rect_filled(r, 3.0, colour);
+            painter.rect_filled(r, 3.0, m.colour);
             painter.galley(r.min + egui::vec2(4.0, 2.0), galley, Color32::WHITE);
         }
     }
