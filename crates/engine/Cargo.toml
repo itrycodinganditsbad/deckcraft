@@ -26,9 +26,23 @@ thiserror = { workspace = true }
 log = { workspace = true }
 image = { workspace = true }
 
+[features]
+# Live documents through Craft Cloud: a `.deckcraft` file in the Craft Cloud folder edited on several machines at
+# once. Off by default (the web build never has it); the desktop app turns it on.
+live = ["dep:craft-cloud-kit", "dep:craft-cloud-app"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-cloud-kit = { workspace = true, optional = true }
+craft-cloud-app = { workspace = true, optional = true }
+
 [dev-dependencies]
 deckcraft-anim = { workspace = true }
 zip = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# The fake agent, for the live adapter's tests.
+craft-cloud-kit = { workspace = true, features = ["fake"] }
+craft-cloud-app = { workspace = true, features = ["fake"] }
 
 # The browser clock for comment timestamps (wasm has no std::time::SystemTime).
 [target.'cfg(target_arch = "wasm32")'.dependencies]

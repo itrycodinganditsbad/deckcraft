@@ -20,6 +20,8 @@ pub mod inkshape;
 pub mod io;
 pub mod keys;
 pub mod links;
+#[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+pub mod live;
 pub mod media_refs;
 pub mod recovery;
 pub mod sample;
