@@ -668,6 +668,28 @@ fn save_as_leaves_the_live_document() {
     assert_eq!(std::fs::read(da.0.join("saveas.deckcraft")).unwrap(), live_file, "the live file wasn't written from the variant");
 }
 
+/// Save As to the live file under another spelling (`./` and `..` in it) is still the live file: saved live, with a
+/// record, and the window stays live. Another format over the live file is refused (it would no longer be the live
+/// presentation's file).
+#[test]
+fn the_live_file_under_another_spelling_is_still_the_live_file() {
+    let hub = Hub::new();
+    let (mut a, _b, da, _db, pc, _l) = pair(&hub, "spelled.deckcraft");
+    let other = da.0.join(".").join("sub").join("..").join("spelled.deckcraft").to_string_lossy().into_owned();
+    std::fs::create_dir_all(da.0.join("sub")).unwrap();
+    insert(&mut a, 12.0);
+    let saves = pc.saves().len();
+    let v = a.execute("file.saveAs", &json!({"path": other})).unwrap();
+    assert_eq!(v["live"], json!(true), "saved as the live file: {v}");
+    assert!(a.is_live(), "still live");
+    assert_eq!(pc.saves().len(), saves + 1, "with its record");
+    let before = std::fs::read(da.0.join("spelled.deckcraft")).unwrap();
+    let pptx = da.0.join("spelled.deckcraft").to_string_lossy().into_owned();
+    assert!(a.execute("file.save", &json!({"path": pptx, "format": "pptx"})).is_err(), "no other format over the live file");
+    assert_eq!(std::fs::read(da.0.join("spelled.deckcraft")).unwrap(), before);
+    assert!(a.is_live());
+}
+
 /// The guard's roll-back sends nothing: a command that panics leaves the live document as it was.
 #[test]
 fn a_command_the_guard_rolls_back_sends_nothing() {

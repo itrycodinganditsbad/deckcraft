@@ -191,6 +191,22 @@ pub fn read_with_live(path: &str, agent: &Agent) -> Result<(crate::cmd::file::Lo
     Ok((crate::cmd::file::LoadedFile { path: path.to_owned(), doc, native, damaged }, live))
 }
 
+/// Whether paths `a` and `b` name the same file: the same once resolved (links, `..`, and on Windows case and
+/// separators), or, for a file not there yet, the same spelling with separators and (on Windows) case alike.
+pub(crate) fn same_file(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    if let (Ok(x), Ok(y)) = (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        return x == y;
+    }
+    let plain = |p: &str| {
+        let p = p.replace('\\', "/");
+        if cfg!(windows) { p.to_lowercase() } else { p }
+    };
+    plain(a) == plain(b)
+}
+
 /// The largest media item a live presentation can hold (Craft Cloud's blob limit).
 pub const MAX_MEDIA_BYTES: usize = 64 * 1024 * 1024;
 
@@ -422,7 +438,7 @@ impl Session {
     pub(crate) fn leave_live_for(&mut self, path: &str) {
         let Some(uid) = self.active().map(|d| d.uid) else { return };
         let Some(l) = self.live.docs.get(&uid) else { return };
-        if l.path == path {
+        if same_file(&l.path, path) {
             return;
         }
         self.drop_live(uid);
@@ -631,8 +647,14 @@ impl Session {
     pub(crate) fn live_save(&mut self, path: &str, format: &str) -> Option<Result<Value>> {
         let uid = self.active()?.uid;
         let l = self.live.docs.get(&uid)?;
-        if format != "deckcraft" || l.path != path {
+        if !same_file(&l.path, path) {
             return None;
+        }
+        // Another format over the live file would leave it unreadable as the live presentation's file.
+        if format != "deckcraft" {
+            return Some(Err(EngineError::Other(
+                "This is the live presentation's file: to keep it in another format, use Save As with another name.".into(),
+            )));
         }
         if l.kit.status().read_only.is_some() {
             return Some(Err(EngineError::Other(
