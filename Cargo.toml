@@ -12,9 +12,9 @@ repository = "https://github.com/storytold/deckcraft"
 
 [workspace.dependencies]
 # Craft Cloud: live documents (the `live` feature of the engine and the UI).
-craft-cloud-kit = { git = "https://github.com/itrycodinganditsbad/craft-cloud", rev = "93575c130840e21929cc3ebb18e40aa3a0e0c922" }
-craft-cloud-egui = { git = "https://github.com/itrycodinganditsbad/craft-cloud", rev = "93575c130840e21929cc3ebb18e40aa3a0e0c922" }
-craft-cloud-app = { git = "https://github.com/itrycodinganditsbad/craft-cloud", rev = "93575c130840e21929cc3ebb18e40aa3a0e0c922" }
+craft-cloud-kit = { git = "https://github.com/itrycodinganditsbad/craft-cloud", rev = "f2c27f5b79b9fdb6b8a87961973c80fdfa13c22a" }
+craft-cloud-egui = { git = "https://github.com/itrycodinganditsbad/craft-cloud", rev = "f2c27f5b79b9fdb6b8a87961973c80fdfa13c22a" }
+craft-cloud-app = { git = "https://github.com/itrycodinganditsbad/craft-cloud", rev = "f2c27f5b79b9fdb6b8a87961973c80fdfa13c22a" }
 # internal
 deckcraft-geom = { path = "crates/geom" }
 deckcraft-color = { path = "crates/color" }
