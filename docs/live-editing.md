@@ -16,6 +16,17 @@ every edit on the others as it is made. Anything else opens as before. `DECKCRAF
 - **The window:** the status bar's badge says Live, Waiting, Offline or Read-only; Backstage shows the Craft Cloud
   account and the presentations open on every computer; a banner offers to bring in a file changed outside Craft;
   other computers' selections are outlined in their colour.
+- **Not live:** a presentation with a picture or video over 64 MB opens as a plain file, with a message.
+- **Known gaps:**
+  - Undo of a delete brings back a copy of what was deleted: edits another computer made to it in the meantime
+    (typing, properties) are lost on both, and connector ends, comment anchors and animations that pointed at it stay
+    cleared. Both computers still show the same thing.
+  - Duplicating a slide keeps its comments anchored to the original slide's shapes (as without live). While live,
+    the other computer clears those anchors.
+  - Besides masters, layouts, the theme and settings, two more things are kept whole: a text box's body settings
+    (autofit, insets and list style together) and a comment with its replies. Two replies added to one comment at
+    once keep one.
+  - A custom show lists each slide once: a slide listed twice keeps its first place.
 - **The code:** `crates/engine/src/live/` (the adapter onto the Craft Cloud kit, and the session's hook, undo, open and
   save) and `crates/ui-egui/src/live.rs` (the window's piece). DeckCraft's ids stay local to each computer: the live
   document keys everything by its own element ids, and each session maps them.
