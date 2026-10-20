@@ -317,7 +317,9 @@ pub struct Deck;
 impl LiveDocument for Deck {
     type Doc = LiveDeck;
     const APP: &'static str = "deckcraft";
-    const SCHEMA: u32 = 1;
+    /// 2: sections and custom shows as movable lists of slides, media rows naming their machine (a build that wrote
+    /// sections as records, layout 1, opens these read-only rather than misreading them).
+    const SCHEMA: u32 = 2;
 
     fn mappings(d: &LiveDeck) -> Mappings<'_> {
         Mappings::new()

@@ -801,7 +801,7 @@ fn a_newer_documents_opens_read_only() {
     impl LiveDocument for Newer {
         type Doc = Vec<u8>;
         const APP: &'static str = "deckcraft";
-        const SCHEMA: u32 = 2;
+        const SCHEMA: u32 = 3;
         fn mappings(d: &Vec<u8>) -> Mappings<'_> {
             Mappings::new().opaque("x", Opaque { value: Some(d), key: None })
         }
