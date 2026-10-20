@@ -322,6 +322,20 @@ impl Session {
             .insert(uid, LiveDoc { kit, base: model, path: path.to_owned(), machine, changed_at: None, file, banner, presence: None, error: None });
     }
 
+    /// The active presentation was saved as `path`: if it was live as another file, it stops being live (its edits
+    /// no longer go to the others, nor theirs to it, and the live file is no longer written from it).
+    pub(crate) fn leave_live_for(&mut self, path: &str) {
+        let Some(uid) = self.active().map(|d| d.uid) else { return };
+        let Some(l) = self.live.docs.get(&uid) else { return };
+        if l.path == path {
+            return;
+        }
+        self.drop_live(uid);
+        self.ui_requests.push(crate::UiRequest::Message {
+            text: "Saved as a new file: this window is that file now, no longer the presentation open on your other computers.".into(),
+        });
+    }
+
     /// Forgets the live side of a presentation being closed.
     pub(crate) fn drop_live(&mut self, uid: u64) {
         self.live.docs.remove(&uid);

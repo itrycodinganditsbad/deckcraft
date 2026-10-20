@@ -449,6 +449,9 @@ fn save(s: &mut Session, p: &Value) -> Result<Value> {
     let bytes = save_bytes(&s.doc()?.doc, format)?;
     write_file(&path, &bytes)?;
     mark_saved(s, Some(path.clone()))?;
+    // Saved under another name: the document is that file from now on, no longer the live one.
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    s.leave_live_for(&path);
     Ok(json!({"path": path, "bytes": bytes.len()}))
 }
 

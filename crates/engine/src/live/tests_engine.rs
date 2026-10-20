@@ -449,6 +449,31 @@ fn revert_brings_back_the_last_save() {
     assert_eq!(deck(&b).slides[1].shapes.len(), saved);
 }
 
+/// Save As to another file: the window is that file from then on. Its later edits don't go live, the other machine's
+/// don't arrive, and the live file isn't written from it.
+#[test]
+fn save_as_leaves_the_live_document() {
+    let hub = Hub::new();
+    let (mut a, mut b, da, _db, _pc, _l) = pair(&hub, "saveas.deckcraft");
+    let copy = da.0.join("variant.deckcraft").to_string_lossy().into_owned();
+    a.execute("file.saveAs", &json!({"path": copy})).unwrap();
+    assert!(!a.is_live());
+    let live_file = std::fs::read(da.0.join("saveas.deckcraft")).unwrap();
+    insert(&mut a, 33.0);
+    a.execute("shape.rename", &json!({"name": "only in the variant"})).unwrap();
+    let theirs = insert(&mut b, 44.0);
+    b.execute("shape.rename", &json!({"id": theirs.0, "name": "only live"})).unwrap();
+    for _ in 0..50 {
+        a.poll_live();
+        b.poll_live();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(named(&b, "only in the variant").is_none(), "the variant's edit didn't go live");
+    assert!(named(&a, "only live").is_none(), "the live edit didn't reach the variant");
+    a.execute("file.save", &json!({})).unwrap();
+    assert_eq!(std::fs::read(da.0.join("saveas.deckcraft")).unwrap(), live_file, "the live file wasn't written from the variant");
+}
+
 /// The guard's roll-back sends nothing: a command that panics leaves the live document as it was.
 #[test]
 fn a_command_the_guard_rolls_back_sends_nothing() {
