@@ -932,8 +932,9 @@ dependencies = [
 [[package]]
 name = "craft-cloud-api"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=fbf2747ad9619ad421024e34034f2a00d3f81192#fbf2747ad9619ad421024e34034f2a00d3f81192"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=e2d5a54e1bae1d32f6f4939aab97de41bc01271a#e2d5a54e1bae1d32f6f4939aab97de41bc01271a"
 dependencies = [
+ "blake3",
  "caseless",
  "serde",
  "thiserror 2.0.21",
@@ -944,7 +945,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-app"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=fbf2747ad9619ad421024e34034f2a00d3f81192#fbf2747ad9619ad421024e34034f2a00d3f81192"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=e2d5a54e1bae1d32f6f4939aab97de41bc01271a#e2d5a54e1bae1d32f6f4939aab97de41bc01271a"
 dependencies = [
  "craft-cloud-api",
  "httparse",
@@ -958,7 +959,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-egui"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=fbf2747ad9619ad421024e34034f2a00d3f81192#fbf2747ad9619ad421024e34034f2a00d3f81192"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=e2d5a54e1bae1d32f6f4939aab97de41bc01271a#e2d5a54e1bae1d32f6f4939aab97de41bc01271a"
 dependencies = [
  "craft-cloud-app",
  "craft-cloud-kit",
@@ -968,7 +969,7 @@ dependencies = [
 [[package]]
 name = "craft-cloud-kit"
 version = "0.1.0"
-source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=fbf2747ad9619ad421024e34034f2a00d3f81192#fbf2747ad9619ad421024e34034f2a00d3f81192"
+source = "git+https://github.com/itrycodinganditsbad/craft-cloud?rev=e2d5a54e1bae1d32f6f4939aab97de41bc01271a#e2d5a54e1bae1d32f6f4939aab97de41bc01271a"
 dependencies = [
  "blake3",
  "craft-cloud-api",
