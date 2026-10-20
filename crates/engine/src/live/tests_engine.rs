@@ -508,6 +508,30 @@ fn rows_inserted_in_a_table_of_equal_rows_keep_their_identity() {
     }
 }
 
+/// Edits the kit can't take (here: one element in the tree twice, a shape copied to another slide with its id) stay
+/// on screen: Undo is refused rather than showing the live document without them, and a save writes them (with no
+/// record) rather than the live document without them.
+#[test]
+fn unsent_edits_are_never_thrown_away() {
+    let hub = Hub::new();
+    let (mut a, mut b, da, _db, _pc, _l) = pair(&hub, "unsent.deckcraft");
+    insert(&mut a, 10.0);
+    converge(&mut a, &mut b, "a first edit");
+    a.edit(|doc, _| {
+        let copy = doc.slides[1].shapes[0].clone();
+        Arc::make_mut(&mut doc.slides[0]).shapes.push(deckcraft_model::Shape { name: "twice".into(), ..copy });
+        Ok(())
+    })
+    .unwrap();
+    a.poll_live();
+    assert!(!Arc::ptr_eq(&deck(&a), &a.live_kit().unwrap().model().pres), "the edit didn't go out");
+    assert!(a.execute("edit.undo", &json!({})).is_err(), "Undo waits");
+    assert!(deck(&a).slides[0].shapes.iter().any(|s| s.name == "twice"), "the edit is still on screen");
+    a.execute("file.save", &json!({})).unwrap();
+    let saved = deckcraft_format::load(&std::fs::read(da.0.join("unsent.deckcraft")).unwrap()).unwrap();
+    assert!(saved.slides[0].shapes.iter().any(|s| s.name == "twice"), "the save has the edit");
+}
+
 /// Revert on a live document brings back the file as it is on disk now (its last save), not the content from when the
 /// window was opened.
 #[test]

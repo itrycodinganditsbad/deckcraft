@@ -433,7 +433,12 @@ impl Session {
                         text: "This presentation was made by a newer DeckCraft: update DeckCraft to edit it.".into(),
                     });
                 }
-                Err(e) => l.error = Some(e.to_string()),
+                Err(e) => {
+                    // Not sent (stalled, behind, refused): still an edit made here, which autosave keeps (without
+                    // a record) until it can go out.
+                    l.error = Some(e.to_string());
+                    l.changed_at.get_or_insert_with(Instant::now);
+                }
             }
         }
     }
@@ -504,7 +509,9 @@ impl Session {
         let local_due = l.changed_at.is_some_and(|t| t.elapsed() >= AUTOSAVE_AFTER);
         // A newer DeckCraft's document is never written by this one (it would drop what this one doesn't know).
         let read_only = l.kit.status().read_only.is_some() || matches!(l.banner, Some(Banner::ReadOnly(_)));
-        let in_the_way = busy || unsent || read_only || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
+        // Unsent edits don't hold it back: they are saved as they are, with no record (see `live_write`).
+        let missing = if unsent { st.doc.media.iter().any(|m| m.data.is_empty() && m.link.is_none()) } else { media_missing(l.kit.model()) };
+        let in_the_way = busy || read_only || missing || matches!(l.banner, Some(Banner::ChangedOutside));
         // (`file_behind` is true after an edit made here too: those wait for their 5 s.)
         let behind = l.changed_at.is_none() && l.kit.file_behind();
         if !in_the_way && (local_due || behind) {
@@ -525,8 +532,12 @@ impl Session {
     /// record, then the write. With no save point (read-only, stopped, behind) it saves the document as it is, with no
     /// record. Returns the bytes written.
     fn live_write(&mut self, uid: u64) -> Result<usize> {
+        let unsent =
+            self.docs.iter().find(|d| d.uid == uid).is_some_and(|st| self.live.docs.get(&uid).is_some_and(|l| !Arc::ptr_eq(&st.doc, &l.base)));
         let Some(l) = self.live.docs.get_mut(&uid) else { return Err(EngineError::NoDocument) };
-        let point = l.kit.save_point();
+        // Edits on screen the live document doesn't have yet: the document is saved as it is, with no record (the
+        // kit's fallback); a save point would write the live document without them.
+        let point = if unsent { Err(KitError::NoRecord("edits not sent yet".into())) } else { l.kit.save_point() };
         let (pres, bytes) = match &point {
             Ok(p) => {
                 let pres = p.model().pres.clone();
@@ -589,6 +600,13 @@ impl Session {
         self.sync_live();
         let st = self.docs.iter_mut().find(|d| d.uid == uid)?;
         let l = self.live.docs.get_mut(&uid)?;
+        if !Arc::ptr_eq(&st.doc, &l.base) {
+            // An undo now would show the live document without the edits on screen that didn't go out.
+            return Some(Err(EngineError::Other(format!(
+                "Undo waits until your last edits reach Craft Cloud ({}). Save keeps them meanwhile.",
+                l.error.clone().unwrap_or_else(|| "not sent yet".into())
+            ))));
+        }
         let name = l.kit.step_name(!redo).map(str::to_owned);
         let done = if redo { l.kit.redo() } else { l.kit.undo() };
         Some(match done {
