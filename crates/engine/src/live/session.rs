@@ -430,8 +430,7 @@ impl Session {
         let local_due = l.changed_at.is_some_and(|t| t.elapsed() >= AUTOSAVE_AFTER);
         // A newer DeckCraft's document is never written by this one (it would drop what this one doesn't know).
         let read_only = l.kit.status().read_only.is_some() || matches!(l.banner, Some(Banner::ReadOnly(_)));
-        let in_the_way =
-            busy || unsent || read_only || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
+        let in_the_way = busy || unsent || read_only || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
         if !in_the_way && (local_due || l.kit.file_behind()) {
             match self.live_write(uid) {
                 Ok(_) => changed = true,

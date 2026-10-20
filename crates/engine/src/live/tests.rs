@@ -401,6 +401,23 @@ pub(crate) fn valid(p: &Presentation) -> Vec<String> {
             out.push(format!("section {} lists a missing slide", sec.name));
         }
     }
+    // Sections split the slides: each slide in exactly one.
+    if !p.sections.is_empty() {
+        for s in &p.slides {
+            let n = p.sections.iter().map(|sec| sec.slides.iter().filter(|id| **id == s.id).count()).sum::<usize>();
+            if n != 1 {
+                out.push(format!("slide {} is in {n} sections", s.id));
+            }
+        }
+    }
+    // No empty group (DeckCraft removes a group whose last child goes).
+    for s in &p.slides {
+        deckcraft_model::walk(&s.shapes, &mut |sh, _| {
+            if sh.is_group() && sh.children().is_empty() {
+                out.push(format!("slide {}: group {} is empty", s.id, sh.id));
+            }
+        });
+    }
     out
 }
 
@@ -589,7 +606,7 @@ fn a_row_and_a_column_added_at_once_keep_the_table_rectangular() {
     assert_eq!(t.rows[1].cells[0].text.text(), "<x>");
 }
 
-/// Comments added on both machines, a section renamed on one while the other adds a slide to a custom show,
+/// Comments added on both machines, a section renamed on one while the other reorders a custom show,
 /// settings changed on both (different ones): every change kept on both.
 #[test]
 fn comments_sections_shows_and_settings_merge() {
@@ -602,16 +619,48 @@ fn comments_sections_shows_and_settings_merge() {
     });
     change(&mut b, |p| {
         Arc::make_mut(&mut p.slides[0]).comments.push(Comment { author: "B".into(), text: "two".into(), ..Default::default() });
-        let first = p.slides[1].id;
-        p.custom_shows[0].slides.push(first);
+        p.custom_shows[0].slides.reverse();
         p.header_footer.footer_text = "Footer from B".into();
     });
     converge(&mut a, &mut b, "lists and settings");
     let p = &a.model().pres;
     assert_eq!(p.slides[0].comments.len(), 2);
     assert_eq!(p.sections[0].name, "Renamed");
-    assert_eq!(p.custom_shows[0].slides.len(), 3);
+    assert_eq!(p.custom_shows[0].slides, vec![p.slides[0].id, p.slides[1].id], "the show reordered");
     assert_eq!((p.props.title.as_str(), p.header_footer.footer_text.as_str()), ("Title from A", "Footer from B"));
+}
+
+/// Sections and custom shows are mapped in full: a slide added to one section on each machine at once is in that
+/// section on both, a slide added with no section joins the section of the slide before it, and a custom show
+/// keeps both machines' additions.
+#[test]
+fn slides_added_to_one_section_at_once_are_both_in_it() {
+    let hub = Hub::new();
+    let (mut a, mut b, _pc, _l) = pair(&hub, "sections.deckcraft");
+    let add = |p: &mut Presentation, name: &str, in_section: bool| {
+        let layout = p.slides[0].layout;
+        let mut s = defaults::new_slide(p, layout).unwrap();
+        s.name = name.into();
+        let id = s.id;
+        p.slides.push(Arc::new(s));
+        if in_section {
+            p.sections[1].slides.push(id);
+        }
+        p.custom_shows[0].slides.push(id);
+    };
+    change(&mut a, |p| add(p, "from a", true));
+    change(&mut b, |p| add(p, "from b", true));
+    converge(&mut a, &mut b, "slides added to one section");
+    change(&mut a, |p| add(p, "no section", false));
+    converge(&mut a, &mut b, "a slide in no section");
+    for s in [&a, &b] {
+        let p = &s.model().pres;
+        let named = |n: &str| p.slides.iter().find(|s| s.name == n).unwrap().id;
+        for n in ["from a", "from b", "no section"] {
+            assert!(p.sections[1].slides.contains(&named(n)), "{n} is in the second section");
+        }
+        assert_eq!(p.custom_shows[0].slides.len(), 5, "both shows' additions");
+    }
 }
 
 /// A master changed on both machines at once: whole-item, one side's change is kept, the same on both.
@@ -713,7 +762,8 @@ fn references_to_elements_not_seen_yet_are_kept() {
     let (layout, shape, slide) = (craft_cloud_kit::ElemId::new(), craft_cloud_kit::ElemId::new(), craft_cloud_kit::ElemId::new());
     let mut p = (*d.pres).clone();
     let ids = Arc::make_mut(&mut d.ids);
-    let (l, s, sl) = (ids.local_or_pending(layout, &mut p).unwrap(), ids.local_or_pending(shape, &mut p).unwrap(), ids.local_or_pending(slide, &mut p).unwrap());
+    let (l, s, sl) =
+        (ids.local_or_pending(layout, &mut p).unwrap(), ids.local_or_pending(shape, &mut p).unwrap(), ids.local_or_pending(slide, &mut p).unwrap());
     let first = Arc::make_mut(&mut p.slides[0]);
     first.layout = deckcraft_model::LayoutId(l);
     first.comments.push(Comment { text: "on a shape still coming".into(), shape: Some(ShapeId(s)), ..Default::default() });

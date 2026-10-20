@@ -251,8 +251,11 @@ impl LiveDocument for Deck {
             .table("order", write::order(d))
             .tree("deck", write::DeckSrc::new(d))
             .table("comments", write::comments(d))
-            .table("sections", write::lists(d, d.keys.sections, &d.pres.sections, &d.ids.sections))
-            .table("shows", write::lists(d, d.keys.shows, &d.pres.custom_shows, &d.ids.shows))
+            .table(
+                "sections",
+                write::lists(d, d.keys.sections, d.pres.sections.iter().map(|s| (s.name.as_str(), s.slides.as_slice())), &d.ids.sections),
+            )
+            .table("shows", write::lists(d, d.keys.shows, d.pres.custom_shows.iter().map(|s| (s.name.as_str(), s.slides.as_slice())), &d.ids.shows))
             .table("media", write::MediaSrc { d })
     }
 

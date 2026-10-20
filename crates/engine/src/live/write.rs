@@ -323,15 +323,70 @@ pub(crate) fn comments(d: &LiveDeck) -> Records {
     }
 }
 
-/// Sections, or custom shows.
-pub(crate) fn lists<T: serde::Serialize + Clone + 'static>(d: &LiveDeck, key: u64, items: &[T], elems: &[ElemId]) -> Records {
-    let rows: Vec<ElemId> = elems.iter().take(items.len()).copied().collect();
-    let (items, ids, r) = (items.to_vec(), d.ids.clone(), rows.clone());
-    Records {
-        key,
-        rows,
-        cells: RefCell::new(None),
-        make: Box::new(move || r.iter().zip(&items).map(|(e, item)| (*e, live_text(item, &ids))).collect()),
+/// Sections, or custom shows, mapped in full: one row each (a movable list, so two machines adding one at once keep
+/// both), its name a property of its cell, and its slides a movable list of slide elements nested in the cell, so two
+/// machines adding a slide to one section at once keep both.
+pub(crate) struct SlideLists {
+    key: u64,
+    rows: Vec<ElemId>,
+    items: Vec<(String, Vec<ElemId>)>,
+}
+
+pub(crate) fn lists<'a>(
+    d: &LiveDeck,
+    key: u64,
+    items: impl Iterator<Item = (&'a str, &'a [deckcraft_model::SlideId])>,
+    elems: &[ElemId],
+) -> SlideLists {
+    let items: Vec<(String, Vec<ElemId>)> =
+        items.map(|(name, slides)| (name.to_owned(), slides.iter().filter_map(|s| d.ids.elem(s.0)).collect())).collect();
+    let rows = elems.iter().take(items.len()).copied().collect();
+    SlideLists { key, rows, items }
+}
+
+impl TableSource for SlideLists {
+    fn key(&self) -> Option<usize> {
+        Some(self.key as usize)
+    }
+    fn rows(&self) -> Vec<ElemId> {
+        self.rows.clone()
+    }
+    fn columns(&self) -> Vec<ElemId> {
+        vec![ONE]
+    }
+    fn cell(&self, _: ElemId, _: ElemId) -> Option<Value> {
+        None
+    }
+    fn cells(&self) -> Vec<(ElemId, ElemId, Value)> {
+        Vec::new()
+    }
+    fn cell_maps(&self) -> bool {
+        true
+    }
+    fn write_cell(&self, row: ElemId, _: ElemId, props: &mut Props<'_, '_>) -> Result<(), KitError> {
+        let Some((name, slides)) = self.rows.iter().position(|r| *r == row).and_then(|i| self.items.get(i)) else { return Ok(()) };
+        props.set("name", name.as_str())?;
+        props.table("slides", &IdList(slides))
+    }
+}
+
+/// A list of elements as a table of rows alone.
+struct IdList<'a>(&'a [ElemId]);
+
+impl TableSource for IdList<'_> {
+    fn rows(&self) -> Vec<ElemId> {
+        // Each once (a list naming one twice keeps its first place).
+        let mut seen = std::collections::HashSet::new();
+        self.0.iter().copied().filter(|e| seen.insert(*e)).collect()
+    }
+    fn columns(&self) -> Vec<ElemId> {
+        Vec::new()
+    }
+    fn cell(&self, _: ElemId, _: ElemId) -> Option<Value> {
+        None
+    }
+    fn cells(&self) -> Vec<(ElemId, ElemId, Value)> {
+        Vec::new()
     }
 }
 

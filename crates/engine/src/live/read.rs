@@ -68,14 +68,14 @@ pub(crate) fn apply(old: &Arc<LiveDeck>, patch: &RemotePatch<'_>) -> Result<Live
         keys.comments = fresh_key();
     }
     if let Some(view) = patch.table("sections") {
-        let (list, elems) = records::<Section>(&view, &mut ids, &mut pres);
-        pres.sections = list;
+        let (list, elems) = slide_lists(&view, &mut ids, &mut pres);
+        pres.sections = list.into_iter().map(|(name, slides)| Section { name, slides }).collect();
         ids.sections = elems;
         keys.sections = fresh_key();
     }
     if let Some(view) = patch.table("shows") {
-        let (list, elems) = records::<CustomShow>(&view, &mut ids, &mut pres);
-        pres.custom_shows = list;
+        let (list, elems) = slide_lists(&view, &mut ids, &mut pres);
+        pres.custom_shows = list.into_iter().map(|(name, slides)| CustomShow { name, slides }).collect();
         ids.shows = elems;
         keys.shows = fresh_key();
     }
@@ -432,15 +432,19 @@ fn comments(view: &TableView<'_>, pres: &mut Presentation, ids: &mut Ids) {
     }
 }
 
-fn records<T: serde::de::DeserializeOwned>(view: &TableView<'_>, ids: &mut Ids, pres: &mut Presentation) -> (Vec<T>, Vec<ElemId>) {
+/// Sections or custom shows: each row's name and its list of slides.
+fn slide_lists(view: &TableView<'_>, ids: &mut Ids, pres: &mut Presentation) -> (Vec<(String, Vec<deckcraft_model::SlideId>)>, Vec<ElemId>) {
     let mut list = Vec::new();
     let mut elems = Vec::new();
     for row in view.rows() {
-        let Some(Json::Object(o)) = view.cell(row, ONE).and_then(|v| v.as_str().and_then(|s| serde_json::from_str(s).ok())) else { continue };
-        if let Some(item) = decode::<T>(o, ids, pres) {
-            list.push(item);
-            elems.push(row);
-        }
+        let Some(props) = view.cell_props(row, ONE) else { continue };
+        let name = props.str("name").unwrap_or_default();
+        let slides = props
+            .table("slides")
+            .map(|t| t.rows().into_iter().filter_map(|e| ids.local_or_pending(e, pres)).map(deckcraft_model::SlideId).collect())
+            .unwrap_or_default();
+        list.push((name, slides));
+        elems.push(row);
     }
     (list, elems)
 }

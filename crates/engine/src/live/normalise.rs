@@ -59,6 +59,9 @@ pub(crate) fn run(d: &mut LiveDeck) {
         }
         d.keys.sections = fresh_key();
     }
+    if partition_sections(pres) {
+        d.keys.sections = fresh_key();
+    }
     if pres.custom_shows.iter().any(|s| gone(&s.slides)) {
         for s in &mut pres.custom_shows {
             s.slides.retain(|id| slide_ids.contains(&id.0));
@@ -68,7 +71,8 @@ pub(crate) fn run(d: &mut LiveDeck) {
     // A slide whose layout a merge deleted takes the first one (as `deckcraft_format::repair` does on opening; its
     // other repairs copy every slide, too slow after each remote keystroke).
     let first_layout = pres.masters.first().and_then(|m| m.layouts.first()).map(|l| l.id);
-    let missing: Vec<usize> = pres.slides.iter().enumerate().filter(|(_, s)| pres.layout(s.layout).is_none() && !ids.is_pending(s.layout.0)).map(|(i, _)| i).collect();
+    let missing: Vec<usize> =
+        pres.slides.iter().enumerate().filter(|(_, s)| pres.layout(s.layout).is_none() && !ids.is_pending(s.layout.0)).map(|(i, _)| i).collect();
     if let Some(first) = first_layout {
         for i in missing {
             if let Some(s) = pres.slides.get_mut(i) {
@@ -78,6 +82,45 @@ pub(crate) fn run(d: &mut LiveDeck) {
     }
     pres.slide_size = deckcraft_format::sane_slide_size(pres.slide_size);
     pres.fix_next_id();
+}
+
+/// Sections split the slides as DeckCraft keeps them: every slide in exactly one section (the first that lists it),
+/// each section's slides in slide order, a slide no section has (two machines added slides at once) in the section of
+/// the slide before it. True if it changed anything.
+fn partition_sections(pres: &mut Presentation) -> bool {
+    if pres.sections.is_empty() {
+        return false;
+    }
+    let place: std::collections::HashMap<u32, usize> = pres.slides.iter().enumerate().map(|(i, s)| (s.id.0, i)).collect();
+    let mut owner: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    let mut fixed: Vec<Vec<deckcraft_model::SlideId>> = Vec::with_capacity(pres.sections.len());
+    for (k, sec) in pres.sections.iter().enumerate() {
+        let mut list: Vec<deckcraft_model::SlideId> =
+            sec.slides.iter().copied().filter(|id| !place.contains_key(&id.0) || owner.insert(id.0, k).is_none()).collect();
+        // Slides still on their way (no place yet) keep theirs at the end.
+        list.sort_by_key(|id| place.get(&id.0).copied().unwrap_or(usize::MAX));
+        fixed.push(list);
+    }
+    let mut prev_section = 0usize;
+    for s in &pres.slides {
+        match owner.get(&s.id.0) {
+            Some(k) => prev_section = *k,
+            None => {
+                if let Some(list) = fixed.get_mut(prev_section) {
+                    list.push(s.id);
+                    list.sort_by_key(|id| place.get(&id.0).copied().unwrap_or(usize::MAX));
+                }
+                owner.insert(s.id.0, prev_section);
+            }
+        }
+    }
+    let changed = pres.sections.iter().zip(&fixed).any(|(sec, list)| sec.slides != *list);
+    if changed {
+        for (sec, list) in pres.sections.iter_mut().zip(fixed) {
+            sec.slides = list;
+        }
+    }
+    changed
 }
 
 /// A slide with its dangling references dropped, if it had any.
