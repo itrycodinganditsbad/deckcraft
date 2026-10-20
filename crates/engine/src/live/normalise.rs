@@ -25,6 +25,14 @@ pub(crate) fn run(d: &mut LiveDeck) {
     let pres = Arc::make_mut(&mut d.pres);
     let slide_ids: HashSet<u32> = pres.slides.iter().map(|s| s.id.0).chain(ids.pending_ids()).collect();
     let mut comments_changed = false;
+    // A group whose children all went (each machine deleted one at once) goes too, as DeckCraft does.
+    for s in &mut pres.slides {
+        if has_empty_group(&s.shapes, 0) {
+            let mut fixed = (**s).clone();
+            while drop_empty_groups(&mut fixed.shapes, 0) {}
+            *s = Arc::new(fixed);
+        }
+    }
     for s in &mut pres.slides {
         if let Some(fixed) = fix_slide(s, &ids) {
             comments_changed |= fixed.comments != s.comments;
@@ -82,6 +90,26 @@ pub(crate) fn run(d: &mut LiveDeck) {
     }
     pres.slide_size = deckcraft_format::sane_slide_size(pres.slide_size);
     pres.fix_next_id();
+}
+
+fn has_empty_group(shapes: &[deckcraft_model::Shape], depth: usize) -> bool {
+    depth <= 64 && shapes.iter().any(|s| (s.is_group() && s.children().is_empty()) || has_empty_group(s.children(), depth + 1))
+}
+
+/// Removes empty groups (one level of them); true if it removed any.
+fn drop_empty_groups(shapes: &mut Vec<deckcraft_model::Shape>, depth: usize) -> bool {
+    if depth > 64 {
+        return false;
+    }
+    let before = shapes.len();
+    shapes.retain(|s| !(s.is_group() && s.children().is_empty()));
+    let mut changed = shapes.len() != before;
+    for s in shapes.iter_mut() {
+        if let Some(children) = s.children_mut() {
+            changed |= drop_empty_groups(children, depth + 1);
+        }
+    }
+    changed
 }
 
 /// Sections split the slides as DeckCraft keeps them: every slide in exactly one section (the first that lists it),

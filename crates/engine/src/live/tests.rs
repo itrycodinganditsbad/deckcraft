@@ -663,6 +663,34 @@ fn slides_added_to_one_section_at_once_are_both_in_it() {
     }
 }
 
+/// Each machine deletes one of a group's two children at once: the group, left empty, goes on both (DeckCraft never
+/// keeps an empty group).
+#[test]
+fn a_group_emptied_by_two_machines_goes() {
+    let hub = Hub::new();
+    let (mut a, mut b, _pc, _l) = pair(&hub, "group.deckcraft");
+    change(&mut a, |p| {
+        let second = shape(p, "Inner 2", 40.0);
+        edit_shape(p, 1, "Group", |g| {
+            if let Some(children) = g.children_mut() {
+                children.push(second);
+            }
+        });
+    });
+    converge(&mut a, &mut b, "two children");
+    let drop = |p: &mut Presentation, name: &str| {
+        let id = shape_named(p, 1, name).unwrap().id;
+        let s = Arc::make_mut(&mut p.slides[1]);
+        crate::cmd::edit::remove_shapes(&mut s.shapes, &[id]);
+    };
+    change(&mut a, |p| drop(p, "Inner"));
+    change(&mut b, |p| drop(p, "Inner 2"));
+    converge(&mut a, &mut b, "both children deleted");
+    for s in [&a, &b] {
+        assert!(shape_named(&s.model().pres, 1, "Group").is_none(), "the empty group went");
+    }
+}
+
 /// A master changed on both machines at once: whole-item, one side's change is kept, the same on both.
 #[test]
 fn a_master_changed_on_both_keeps_one_side() {
