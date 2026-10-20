@@ -296,9 +296,12 @@ impl Session {
         }
         let Some(st) = self.active_mut() else { return };
         let model = kit.model().pres.clone();
-        // The live document may be ahead of the file: its content is the document's, and it isn't saved yet.
+        // The live document may be ahead of the file: its content is the document's. It isn't an edit made here, so
+        // it doesn't read as unsaved; if the file is behind, `file_behind` has it saved (never the other way round:
+        // a file ahead of the live document is never written over by the open).
         if !Arc::ptr_eq(&model, &st.doc) {
             st.doc = model.clone();
+            st.saved_doc = model.clone();
             st.revision += 1;
         }
         let banner = if let Some(ro) = &kit.status().read_only {
@@ -391,7 +394,13 @@ impl Session {
         if changed && !busy && !unsent {
             let model = l.kit.model().pres.clone();
             follow(st, &l.base, &model);
+            // Another machine's change isn't an unsaved edit here (that machine saves it; the file catching up is
+            // `file_behind`'s): a clean document stays clean.
+            let clean = !st.is_dirty();
             st.doc = model.clone();
+            if clean {
+                st.saved_doc = model.clone();
+            }
             l.base = model;
             st.revision += 1;
             st.history.undo.clear();
@@ -415,12 +424,12 @@ impl Session {
             let _ = l.kit.set_presence(Some(bytes.clone()));
             l.presence = Some(bytes);
         }
-        // Autosave: when the document is dirty (a while after the last change) or the file is behind the live
-        // document, and nothing is in the way.
-        let dirty = st.is_dirty();
-        let due = l.changed_at.is_none_or(|t| t.elapsed() >= AUTOSAVE_AFTER);
+        // Autosave, as docs/kit.md says: a while after a change made here, or when the file is behind the live document
+        // (the kit allows that at most once per CATCH_UP_EVERY), and nothing is in the way. A change that came from
+        // elsewhere is never a reason by itself: the machine that made it saves it.
+        let local_due = l.changed_at.is_some_and(|t| t.elapsed() >= AUTOSAVE_AFTER);
         let in_the_way = busy || unsent || media_missing(l.kit.model()) || matches!(l.banner, Some(Banner::ChangedOutside));
-        if !in_the_way && ((dirty && due) || l.kit.file_behind()) {
+        if !in_the_way && (local_due || l.kit.file_behind()) {
             match self.live_write(uid) {
                 Ok(_) => changed = true,
                 Err(e) => {
@@ -549,6 +558,7 @@ impl Session {
                 st.doc = model.clone();
                 st.saved_doc = model.clone();
                 l.base = model;
+                l.changed_at = Some(Instant::now());
                 st.revision += 1;
                 crate::clamp_selection(st);
                 l.banner = None;

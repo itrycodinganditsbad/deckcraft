@@ -345,6 +345,50 @@ fn media_through_the_blob_store_without_freezing() {
     drop(db);
 }
 
+/// Only the pc types (20 keystrokes) and saves after each: the laptop gets every keystroke and never saves (its file is
+/// never behind the live document, and nothing changed there). Then the pc types 20 more without saving: the laptop
+/// catches its file up at most once per `CATCH_UP_EVERY`, never once per keystroke.
+#[test]
+fn only_the_typing_machine_saves() {
+    let hub = Hub::new();
+    let (mut a, mut b, _da, _db, _pc, laptop) = pair(&hub, "onesave.deckcraft");
+    let t = named(&a, "Target").unwrap();
+    a.execute("slide.go", &json!({"index": 1})).unwrap();
+    a.execute("text.edit", &json!({"id": t.0, "at": [0, 0]})).unwrap();
+    let before = laptop.saves().len();
+    for _ in 0..20 {
+        a.execute("text.insert", &json!({"text": "k"})).unwrap();
+        a.execute("file.save", &json!({})).unwrap();
+        for _ in 0..5 {
+            a.poll_live();
+            b.poll_live();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    converge(&mut a, &mut b, "the keystrokes");
+    for _ in 0..50 {
+        a.poll_live();
+        b.poll_live();
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(laptop.saves().len(), before, "the laptop never saved");
+    assert!(!b.active().unwrap().is_dirty(), "another machine's typing isn't unsaved here");
+    // Without the pc's saves: the laptop's file falls behind; it catches up at most once per CATCH_UP_EVERY.
+    let start = Instant::now();
+    let before = laptop.saves().len();
+    for _ in 0..20 {
+        a.execute("text.insert", &json!({"text": "m"})).unwrap();
+        for _ in 0..5 {
+            a.poll_live();
+            b.poll_live();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+    let windows = start.elapsed().as_secs() / craft_cloud_kit::CATCH_UP_EVERY.as_secs() + 1;
+    let saves = (laptop.saves().len() - before) as u64;
+    assert!(saves <= windows, "the laptop saved {saves} times in {:?}", start.elapsed());
+}
+
 /// Both machines edit and autosave: no conflict copy is ever made (the hub's saves carry records), each file ends
 /// with every edit, and the saving stops.
 #[test]
