@@ -33,6 +33,8 @@ pub(crate) const ONE: ElemId = ElemId(1);
 /// The media table's columns.
 pub(crate) const META: ElemId = ElemId(2);
 pub(crate) const CHUNK: ElemId = ElemId(3);
+/// The machine that added the item (whose upload the others wait for until its chunk reference comes).
+pub(crate) const FROM: ElemId = ElemId(4);
 
 static NEXT_KEY: AtomicU64 = AtomicU64::new(1);
 
@@ -74,6 +76,10 @@ pub struct LiveDeck {
     pub(crate) ids: Arc<Ids>,
     /// The chunk reference of each media item whose bytes are in the blob store.
     pub(crate) chunks: Arc<HashMap<ElemId, ChunkRef>>,
+    /// The machine that added each media item, as the live document says.
+    pub(crate) from: Arc<HashMap<ElemId, String>>,
+    /// This machine's name: what media items it adds are said to be from.
+    pub(crate) machine: Arc<str>,
     pub(crate) keys: Keys,
     pub(crate) repair: Repair,
     pub(crate) shared: Arc<Shared>,
@@ -98,7 +104,29 @@ impl LiveDeck {
         ids.sections = pres.sections.iter().map(|_| ElemId::new()).collect();
         ids.shows = pres.custom_shows.iter().map(|_| ElemId::new()).collect();
         let chunks = Arc::new(shared.known_chunks(&ids, &pres));
-        Self { pres, ids: Arc::new(ids), chunks, keys: Keys::fresh(), repair: Repair::default(), shared }
+        Self {
+            pres,
+            ids: Arc::new(ids),
+            chunks,
+            from: Arc::default(),
+            machine: Arc::from(""),
+            keys: Keys::fresh(),
+            repair: Repair::default(),
+            shared,
+        }
+    }
+
+    /// The same model as `machine`'s: the media items it holds that no machine is named for are said to be from it.
+    pub fn with_machine(mut self, machine: &str) -> Self {
+        self.machine = Arc::from(machine);
+        let mut from = (*self.from).clone();
+        for m in &self.pres.media {
+            if let Some(e) = self.ids.elem(m.id.0) {
+                from.entry(e).or_insert_with(|| machine.to_owned());
+            }
+        }
+        self.from = Arc::new(from);
+        self
     }
 
     pub fn ids(&self) -> &Ids {
@@ -163,10 +191,14 @@ impl LiveDeck {
                 .iter()
                 .zip(&pres.media)
                 .all(|(a, b)| a.id == b.id && a.name == b.name && a.content_type == b.content_type && a.link == b.link);
+        let mut from = self.from.clone();
         if !media_same {
+            let mut named = (*from).clone();
             for m in &pres.media {
-                ids.elem_or_new(m.id.0);
+                // An item this change added is from this machine.
+                named.entry(ids.elem_or_new(m.id.0)).or_insert_with(|| self.machine.to_string());
             }
+            from = Arc::new(named);
             keys.media = fresh_key();
         }
         if old.sections != pres.sections {
@@ -180,7 +212,16 @@ impl LiveDeck {
         if settings_differ(old, &pres) {
             keys.settings = fresh_key();
         }
-        Self { pres, ids: Arc::new(ids), chunks: self.chunks.clone(), keys, repair: Repair::default(), shared: self.shared.clone() }
+        Self {
+            pres,
+            ids: Arc::new(ids),
+            chunks: self.chunks.clone(),
+            from,
+            machine: self.machine.clone(),
+            keys,
+            repair: Repair::default(),
+            shared: self.shared.clone(),
+        }
     }
 
     /// The same model with `chunks` known (an upload finished), for a background change.

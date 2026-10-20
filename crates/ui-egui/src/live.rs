@@ -87,7 +87,64 @@ pub fn badge(app: &SlideApp, ui: &mut Ui) {
         // In the status bar's type.
         ui.style_mut().override_font_id = Some(theme::font(12.0));
         craft_cloud_egui::badge(ui, &status);
+        // What the media waits for ("waiting for media from the laptop": its upload hasn't come; the file saves once
+        // it is here).
+        if let Some(waiting) = app.session.live_media_waiting() {
+            ui.label(RichText::new(waiting).weak()).on_hover_text("The presentation saves once every picture and video is here.");
+        }
+        if status.gaps > 0 {
+            ui.label(RichText::new(format!("caught up {}×", status.gaps)).weak())
+                .on_hover_text("Changes from another computer that came only part of the way; nothing of them was applied, and this window caught up with Craft Cloud.");
+        }
         ui.style_mut().override_font_id = None;
+    }
+}
+
+/// The longest closing the window waits for media not sent to Craft Cloud yet, in seconds.
+pub const CLOSE_WAIT: f64 = 15.0;
+
+/// Closing the window while media this computer added hasn't gone to Craft Cloud yet (the other computers can't have
+/// it until it has): it waits, at most [`CLOSE_WAIT`], saying so, with "Close now", and closes once the media is sent.
+pub(crate) fn close_after_uploads(app: &mut SlideApp, ctx: &egui::Context, now: f64) {
+    let requested = ctx.input(|i| i.viewport().close_requested());
+    match app.closing {
+        // (The question about unsaved changes comes first.)
+        None if requested && (app.quit_confirmed || !app.session.documents().iter().any(|d| d.is_dirty())) => {
+            if app.session.live_unsent_media() > 0 {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                app.closing = Some((now, false));
+            }
+        }
+        Some((since, false)) => {
+            let unsent = app.session.live_unsent_media();
+            let close = |app: &mut SlideApp| {
+                app.closing = Some((since, true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            };
+            // Sent, or waited long enough, or closed again: it closes.
+            if unsent == 0 || now - since >= CLOSE_WAIT || requested {
+                return close(app);
+            }
+            let left = (CLOSE_WAIT - (now - since)).ceil();
+            let mut now_please = false;
+            egui::Window::new("Sending media").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(
+                ctx,
+                |ui| {
+                    ui.label(format!(
+                        "Sending {unsent} picture{} or video{} to your other computers through Craft Cloud…",
+                        if unsent == 1 { "" } else { "s" },
+                        if unsent == 1 { "" } else { "s" }
+                    ));
+                    ui.label(RichText::new(format!("DeckCraft closes once they're sent (at most {left:.0} s).")).weak());
+                    now_please = ui.button("Close now").clicked();
+                },
+            );
+            if now_please {
+                return close(app);
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
+        _ => {}
     }
 }
 

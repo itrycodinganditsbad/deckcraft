@@ -295,6 +295,34 @@ fn a_remote_fill_survives_an_open_size_and_position_dialog() {
     }
 }
 
+/// A picture the pc added whose bytes it can't send (its agent's blob store refuses them): the laptop's badge says it
+/// waits for media from the pc, and the pc counts it as not sent (closing waits a little for it).
+#[test]
+fn media_not_sent_yet_names_the_machine_it_waits_for() {
+    let hub = Hub::new();
+    let (mut a, mut b, _da, _db, pc, _l) = pair(&hub, "waits.deckcraft");
+    assert_eq!(b.live_media_waiting(), None);
+    pc.too_old();
+    let png = {
+        let img = image::RgbImage::from_pixel(4, 4, image::Rgb([9, 9, 200]));
+        let mut out = std::io::Cursor::new(vec![]);
+        image::DynamicImage::ImageRgb8(img).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        out.into_inner()
+    };
+    a.execute("slide.go", &json!({"index": 0})).unwrap();
+    a.execute("insert.picture", &json!({"data": cmd::base64_encode(&png), "name": "w.png"})).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while b.live_media_waiting().is_none() {
+        a.poll_live();
+        b.poll_live();
+        assert!(Instant::now() < deadline, "the laptop never heard of the picture");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(b.live_media_waiting().as_deref(), Some("waiting for media from pc"));
+    assert_eq!(a.live_unsent_media(), 1, "the pc hasn't sent it");
+    assert_eq!(b.live_unsent_media(), 0);
+}
+
 /// Review focus 4: a slide deleted on one machine while the other types in a shape on it: gone on both, the typist's
 /// selection let go of it, nothing dangles.
 #[test]

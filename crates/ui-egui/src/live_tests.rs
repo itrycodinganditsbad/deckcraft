@@ -186,6 +186,36 @@ fn another_machines_selection_is_outlined() {
     shot(&mut h, "presence-outline");
 }
 
+/// Closing the window while a picture this computer added hasn't gone to Craft Cloud yet: it waits, saying so (and
+/// the other computers' badge would say they wait for media from this one), and "Close now" closes it.
+#[test]
+fn closing_waits_a_little_for_media_not_sent_yet() {
+    let hub = Hub::new();
+    let pc = hub.machine("pc").unwrap();
+    let dir = Folder::new("pc");
+    let mut session = Session::new();
+    let bytes = deckcraft_engine::cmd::file::save_bytes(&deck(), "deckcraft").unwrap();
+    open_live(&mut session, &pc, &dir.0, "close.deckcraft", &bytes, "pc");
+    // Its agent can't take the bytes (a blob store from before blobs): they stay here.
+    pc.too_old();
+    const HEX: &str =
+        "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de0000000c49444154789c63f8cfc0000003010100c9fe92ef0000000049454e44ae426082";
+    let png: Vec<u8> = (0..HEX.len()).step_by(2).map(|i| u8::from_str_radix(&HEX[i..i + 2], 16).unwrap()).collect();
+    session.execute("insert.picture", &json!({"data": deckcraft_engine::cmd::base64_encode(&png), "name": "c.png"})).unwrap();
+    // (Saved: no question about unsaved changes comes first.)
+    session.execute("file.save", &json!({})).unwrap();
+    assert_eq!(session.live_unsent_media(), 1);
+    let mut h = harness(SlideApp::new(session, Services::default()));
+    h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
+    h.run_steps(3);
+    assert!(matches!(h.state().closing, Some((_, false))), "waiting");
+    assert!(h.query_by_label("Close now").is_some(), "it says so");
+    shot(&mut h, "closing-waits-for-media");
+    h.get_by_label("Close now").click();
+    h.run_steps(2);
+    assert!(matches!(h.state().closing, Some((_, true))), "closing now");
+}
+
 /// A `.deckcraft` file handed over by the system (double-click, command line) opens on the background thread when
 /// live documents are on: the window doesn't wait for Craft Cloud.
 #[test]

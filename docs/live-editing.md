@@ -13,6 +13,10 @@ every edit on the others as it is made. Anything else opens as before. `DECKCRAF
   everyone, as one change that Undo takes back.
 - **Saving:** a live presentation autosaves a few seconds after a change, and when another computer's edits make the
   file behind. Two computers saving never make a conflict copy.
+- **Media:** a picture or video goes to the other computers through Craft Cloud once its bytes are uploaded; until
+  then the badge there says "waiting for media from <the computer that added it>", and the presentation saves once
+  every item is here. Closing the window while media this computer added hasn't been sent waits for it, 15 s at
+  most, and says so ("Close now" doesn't wait).
 - **The window:** the status bar's badge says Live, Waiting, Offline or Read-only; Backstage shows the Craft Cloud
   account and the presentations open on every computer; a banner offers to bring in a file changed outside Craft;
   other computers' selections are outlined in their colour.

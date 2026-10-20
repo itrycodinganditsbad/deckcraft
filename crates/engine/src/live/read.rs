@@ -14,7 +14,7 @@ use super::ids::Ids;
 use super::json::{Read, to_local};
 use super::text::paragraphs;
 use super::write::{NO_PARAGRAPHS, NOT_SETTINGS};
-use super::{CHUNK, LiveDeck, META, ONE, Repair, SETTINGS, fresh_key};
+use super::{CHUNK, FROM, LiveDeck, META, ONE, Repair, SETTINGS, fresh_key};
 
 fn elem_json(e: ElemId) -> Json {
     Json::String(format!("@{}", e.hex()))
@@ -44,8 +44,10 @@ pub(crate) fn apply(old: &Arc<LiveDeck>, patch: &RemotePatch<'_>) -> Result<Live
     let mut keys = old.keys;
     let mut repair = Repair::default();
     let mut chunks = old.chunks.clone();
+    let mut from = old.from.clone();
     if let Some(view) = patch.table("media") {
-        chunks = Arc::new(media(&view, &mut pres, &mut ids, old));
+        let (c, f) = media(&view, &mut pres, &mut ids, old);
+        (chunks, from) = (Arc::new(c), Arc::new(f));
         keys.media = fresh_key();
     }
     if let Some(view) = patch.tree("deck")
@@ -80,16 +82,23 @@ pub(crate) fn apply(old: &Arc<LiveDeck>, patch: &RemotePatch<'_>) -> Result<Live
         keys.shows = fresh_key();
     }
     pres.fix_next_id();
-    Ok(LiveDeck { pres: Arc::new(pres), ids: Arc::new(ids), chunks, keys, repair, shared: old.shared.clone() })
+    Ok(LiveDeck { pres: Arc::new(pres), ids: Arc::new(ids), chunks, from, machine: old.machine.clone(), keys, repair, shared: old.shared.clone() })
 }
 
-fn media(view: &TableView<'_>, pres: &mut Presentation, ids: &mut Ids, old: &LiveDeck) -> HashMap<ElemId, craft_cloud_kit::ChunkRef> {
+/// The media items, their chunk references, and the machine each came from.
+type MediaRead = (HashMap<ElemId, craft_cloud_kit::ChunkRef>, HashMap<ElemId, String>);
+
+fn media(view: &TableView<'_>, pres: &mut Presentation, ids: &mut Ids, old: &LiveDeck) -> MediaRead {
     let before: HashMap<u32, &MediaItem> = old.pres.media.iter().map(|m| (m.id.0, m)).collect();
     let mut chunks = HashMap::new();
+    let mut from = HashMap::new();
     let mut list = Vec::new();
     for row in view.rows() {
         let meta: Json = view.cell(row, META).and_then(|v| v.as_str().and_then(|s| serde_json::from_str(s).ok())).unwrap_or(Json::Null);
         let chunk = view.cell(row, CHUNK).and_then(|v| v.as_chunk());
+        if let Some(name) = view.cell(row, FROM).and_then(|v| v.as_str().map(str::to_owned)).or_else(|| old.from.get(&row).cloned()) {
+            from.insert(row, name);
+        }
         let Some(id) = ids.local_or_new(row, pres) else { continue };
         let was = before.get(&id);
         let data = match (was, chunk) {
@@ -118,7 +127,7 @@ fn media(view: &TableView<'_>, pres: &mut Presentation, ids: &mut Ids, old: &Liv
         });
     }
     pres.media = list;
-    chunks
+    (chunks, from)
 }
 
 /// Masters, layouts and settings. True if the settings changed.

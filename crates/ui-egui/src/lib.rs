@@ -491,6 +491,9 @@ pub struct SlideApp {
     pub last_recovery: f64,
     /// Quit was confirmed (changes saved or discarded): let the window close.
     pub quit_confirmed: bool,
+    /// Closing waits for media not sent to Craft Cloud yet: since when (egui time), and whether to close now anyway.
+    #[cfg(feature = "live")]
+    pub(crate) closing: Option<(f64, bool)>,
     pub(crate) notes_buf: (u64, usize, notes::Draft),
     /// Faces borrowed from the font database for text the interface fonts can't draw (#101).
     pub ui_fonts: uifonts::UiFonts,
@@ -575,6 +578,8 @@ impl SlideApp {
             last_time: 0.0,
             last_recovery: 0.0,
             quit_confirmed: false,
+            #[cfg(feature = "live")]
+            closing: None,
             notes_buf: (0, usize::MAX, notes::Draft::default()),
             ui_fonts: uifonts::UiFonts::default(),
             thumb_drag: None,
@@ -1599,6 +1604,9 @@ impl SlideApp {
                 self.dialog = Some(dialogs::Dialog::new("quit"));
             }
         }
+        // Then it waits a little for media not sent to Craft Cloud yet (the other computers can't have it until then).
+        #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+        crate::live::close_after_uploads(self, ctx, now);
         // AutoRecover: unsaved presentations are written to the recovery folder periodically.
         if self.session.recovery_dir.is_some() && now - self.last_recovery > (self.session.prefs.recovery_minutes * 60.0).max(10.0) {
             self.last_recovery = now;

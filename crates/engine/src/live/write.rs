@@ -7,7 +7,8 @@
 //! - `deck` (tree): the presentation's settings node (each setting a property), then the masters, each with its
 //!   layouts under it; a master or layout is one property (`json`): last writer wins for the whole item.
 //! - `comments`, `sections`, `shows` (tables, one column): one row each, its JSON in the cell.
-//! - `media` (table): one row per media item, its name and type (`meta`) and its chunk reference (`chunk`).
+//! - `media` (table): one row per media item, its name and type (`meta`), its chunk reference (`chunk`), and the
+//!   machine that added it (`from`: the one the others wait for while it has no chunk reference).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ use serde_json::Value as Json;
 use super::ids::Ids;
 use super::json::{live_text, object, put, put_fields};
 use super::text::story;
-use super::{CHUNK, LiveDeck, META, ONE, SETTINGS};
+use super::{CHUNK, FROM, LiveDeck, META, ONE, SETTINGS};
 
 /// Presentation fields that aren't settings (they have parts of their own, or are this machine's).
 pub(crate) const NOT_SETTINGS: &[&str] = &["slides", "masters", "media", "sections", "customShows", "nextId"];
@@ -403,7 +404,7 @@ impl TableSource for MediaSrc<'_> {
         self.d.pres.media.iter().filter_map(|m| self.d.ids.elem(m.id.0)).collect()
     }
     fn columns(&self) -> Vec<ElemId> {
-        vec![META, CHUNK]
+        vec![META, CHUNK, FROM]
     }
     fn cell(&self, row: ElemId, column: ElemId) -> Option<Value> {
         let local = self.d.ids.local(row)?;
@@ -413,6 +414,8 @@ impl TableSource for MediaSrc<'_> {
             Some(Value::Str(meta.to_string()))
         } else if column == CHUNK {
             self.d.chunks.get(&row).map(|c| Value::Chunk(*c))
+        } else if column == FROM {
+            self.d.from.get(&row).filter(|name| !name.is_empty()).map(|name| Value::Str(name.clone()))
         } else {
             None
         }
@@ -420,7 +423,7 @@ impl TableSource for MediaSrc<'_> {
     fn cells(&self) -> Vec<(ElemId, ElemId, Value)> {
         let mut out = Vec::new();
         for r in self.rows() {
-            for c in [META, CHUNK] {
+            for c in [META, CHUNK, FROM] {
                 if let Some(v) = self.cell(r, c) {
                     out.push((r, c, v));
                 }

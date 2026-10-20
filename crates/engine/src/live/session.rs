@@ -94,6 +94,31 @@ pub fn media_missing(d: &LiveDeck) -> bool {
     d.pres.media.iter().any(|m| m.data.is_empty() && m.link.is_none())
 }
 
+/// What the media items still without their bytes wait for, for the badge: the machine that added one and hasn't
+/// sent its bytes yet ("waiting for media from the laptop"), or a download under way.
+pub fn media_waiting(d: &LiveDeck) -> Option<String> {
+    let mut from = std::collections::BTreeSet::new();
+    let mut downloading = false;
+    for m in d.pres.media.iter().filter(|m| m.data.is_empty() && m.link.is_none()) {
+        let e = d.ids.elem(m.id.0);
+        if e.is_some_and(|e| d.chunks.contains_key(&e)) {
+            downloading = true;
+        } else {
+            from.insert(e.and_then(|e| d.from.get(&e)).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| "another computer".into()));
+        }
+    }
+    if !from.is_empty() {
+        Some(format!("waiting for media from {}", from.into_iter().collect::<Vec<_>>().join(", ")))
+    } else {
+        downloading.then(|| "downloading media".to_owned())
+    }
+}
+
+/// How many media items this machine added whose bytes haven't gone to Craft Cloud yet (the others wait for them).
+pub fn media_unsent(d: &LiveDeck) -> usize {
+    d.pres.media.iter().filter(|m| !m.data.is_empty() && d.ids.elem(m.id.0).is_some_and(|e| !d.chunks.contains_key(&e))).count()
+}
+
 /// A presentation opened live (off the UI thread), waiting to be adopted.
 pub struct LiveOpen {
     kit: Kit<Deck>,
@@ -142,7 +167,7 @@ pub fn open_at(agent: &Agent, rel: &str, pres: &Presentation, bytes: &[u8], mach
             shared.seed(m.data.clone());
         }
     }
-    let model = Arc::new(LiveDeck::new(Arc::new(pres.clone()), shared));
+    let model = Arc::new(LiveDeck::new(Arc::new(pres.clone()), shared).with_machine(&machine));
     match Kit::<Deck>::open(agent, rel, model, Some(bytes)) {
         Ok(Open::Live(kit)) => Some(Ok(LiveOpen { kit: *kit, machine })),
         Ok(Open::NotLive(_)) => None,
@@ -300,6 +325,19 @@ impl Session {
             st.error = l.error.clone().or_else(|| l.kit.model().shared.error());
         }
         Some(st)
+    }
+
+    /// What the active live presentation's media waits for, if anything ("waiting for media from the laptop"), for
+    /// the badge.
+    pub fn live_media_waiting(&self) -> Option<String> {
+        let d = self.active()?;
+        media_waiting(self.live.docs.get(&d.uid)?.kit.model())
+    }
+
+    /// How many media items of every live presentation open here haven't gone to Craft Cloud yet: closing the window
+    /// waits a little for them (the other computers can't have them until they have).
+    pub fn live_unsent_media(&self) -> usize {
+        self.live.docs.values().map(|l| media_unsent(l.kit.model())).sum()
     }
 
     /// The banner over the active presentation, if it has one.
