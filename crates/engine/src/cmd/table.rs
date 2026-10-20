@@ -284,12 +284,9 @@ fn with_table(s: &mut Session, p: &Value, cmd: &str, f: impl Fn(&mut Table) -> R
 
 fn rows_cols(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
     let (r, c) = at(s, p);
-    // What the command does, for a live presentation's row and column identities (rows have none in the model).
-    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
-    s.note_table_edit(op, r, c);
-    let op = op.to_string();
-    with_table(s, p, "table", move |t| {
-        match op.as_str() {
+    let what = op.to_string();
+    let done = with_table(s, p, "table", move |t| {
+        match what.as_str() {
             "rowAbove" => t.insert_row(r),
             "rowBelow" => t.insert_row(r.saturating_add(1)),
             "colLeft" => t.insert_col(c),
@@ -306,7 +303,14 @@ fn rows_cols(s: &mut Session, p: &Value, op: &str) -> Result<Value> {
             }
         }
         Ok(())
-    })
+    });
+    // What the command did, for a live presentation's row and column identities (rows have none in the model): only
+    // when it did it (a refused one leaves no note for another command's change to pick up).
+    #[cfg(all(feature = "live", not(target_arch = "wasm32")))]
+    if done.is_ok() {
+        s.note_table_edit(op, r, c);
+    }
+    done
 }
 
 fn merge(s: &mut Session, p: &Value) -> Result<Value> {

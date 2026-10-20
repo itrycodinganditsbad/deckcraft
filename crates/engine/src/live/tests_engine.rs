@@ -585,6 +585,11 @@ fn rows_inserted_in_a_table_of_equal_rows_keep_their_identity() {
     for (s, id) in [(&a, ta), (&b, tb)] {
         assert_eq!(cells(s, id), vec!["", "B", "Z"]);
     }
+    // A table command refused (the last column can't go) leaves no note for another command's change to pick up.
+    let one = a.execute("insert.table", &json!({"rows": 2, "cols": 1})).unwrap();
+    let one = one["id"].as_u64().unwrap();
+    assert!(a.execute("table.deleteColumn", &json!({"id": one, "col": 0})).is_err());
+    assert!(!a.table_note_waits(), "nothing noted for a command that did nothing");
 }
 
 /// Edits the kit can't take (here: one element in the tree twice, a shape copied to another slide with its id) stay

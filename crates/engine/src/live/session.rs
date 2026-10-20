@@ -291,6 +291,12 @@ impl Session {
         };
     }
 
+    /// For tests: whether a table command's edit waits for the next sync.
+    #[cfg(test)]
+    pub(crate) fn table_note_waits(&self) -> bool {
+        self.live.table_edit.is_some()
+    }
+
     /// What a live open came to: staged for `file.adopt` of `path`, or, when it failed, why it opens as a plain file
     /// (said to the user).
     pub fn stage_live_try(&mut self, path: &str, live: LiveTry, file: &Presentation) {
